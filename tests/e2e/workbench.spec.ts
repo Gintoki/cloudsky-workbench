@@ -11,13 +11,13 @@ async function login(page: Page, email: string) {
   await expect(page).toHaveURL("/", { timeout: 15_000 });
 }
 
-test("Director can open the decision dashboard", async ({ page }) => {
+test("Director can open the Intelligence OS command center", async ({ page }) => {
   await login(page, "director@cloudsky.demo");
   await expect(
-    page.getByRole("heading", { name: "决策工作台" }),
+    page.getByRole("heading", { name: "Command Center" }),
   ).toBeVisible();
-  await expect(page.getByText("决策与审核队列")).toBeVisible();
-  await expect(page.getByText("Demo 数据")).toBeVisible();
+  await expect(page.getByText("PUBLIC MARKET DATA")).toBeVisible();
+  await expect(page.getByText("INDUSTRY INTELLIGENCE")).toBeVisible();
 });
 
 test("Viewer only sees approved facts and cannot read audit logs", async ({

@@ -133,3 +133,33 @@ export interface IntelligenceListResult {
   companies: IntelligenceFacet[];
   total: number;
 }
+
+export interface ComparableMarketRecord {
+  ticker: string;
+  name: string;
+  market: "US" | "CN" | "HK";
+  currency: "USD" | "CNY" | "HKD";
+  financialCurrency: "USD" | "CNY" | "HKD";
+  price: number | null;
+  priceChangePercent: number | null;
+  marketCap: number | null;
+  revenue: number | null;
+  grossMargin: number | null;
+  netMargin: number | null;
+  priceAsOf: string | null;
+  financialPeriod: string | null;
+  financialAsOf: string | null;
+  dataStatus: "AVAILABLE" | "UNAVAILABLE";
+}
+
+export interface ComparableMarketDataResult {
+  configured: boolean;
+  availability: "LIVE" | "UNAVAILABLE" | "UNCONFIGURED";
+  provider: "PUBLIC_SOURCES";
+  priceBasis: "PREVIOUS_CLOSE";
+  sources: Array<"TENCENT_FINANCE" | "EASTMONEY">;
+  fetchedAt: string;
+  cacheExpiresAt: string;
+  message: string | null;
+  items: ComparableMarketRecord[];
+}

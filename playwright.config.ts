@@ -19,6 +19,9 @@ export default defineConfig({
           reuseExistingServer: true,
           timeout: 120_000,
           env: {
+            DATABASE_URL: "",
+            USE_DEMO_DATA: "true",
+            MARKET_DATA_FETCH_ENABLED: "false",
             ALLOW_DEMO_AUTH: "true",
             SESSION_SECRET:
               "cloudsky-playwright-session-secret-not-for-production-2026",

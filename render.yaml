@@ -1,0 +1,48 @@
+services:
+  - type: web
+    name: cloudsky-intelligence-os
+    runtime: docker
+    plan: free
+    branch: main
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: SESSION_TTL_HOURS
+        value: "168"
+      - key: ALLOW_DEMO_AUTH
+        value: "false"
+      - key: PUBLIC_MARKET_DATA_CACHE_HOURS
+        value: "24"
+      - key: APP_URL
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DATA_AI_API_URL
+        sync: false
+      - key: DATA_AI_API_SHARED_SECRET
+        fromService:
+          type: web
+          name: cloudsky-data-ai-api
+          envVarKey: DATA_AI_API_SHARED_SECRET
+
+  - type: web
+    name: cloudsky-data-ai-api
+    runtime: docker
+    plan: free
+    branch: main
+    dockerfilePath: ./services/data-ai-api/Dockerfile
+    dockerContext: ./services/data-ai-api
+    healthCheckPath: /health/ready
+    autoDeployTrigger: commit
+    envVars:
+      - key: APP_ENV
+        value: production
+      - key: PROVIDER_MODE
+        value: mock
+      - key: DATA_AI_API_SHARED_SECRET
+        generateValue: true

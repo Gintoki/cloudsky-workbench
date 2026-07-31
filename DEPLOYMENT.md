@@ -49,7 +49,47 @@ docker compose down
 7. 在健康检查通过后切换流量；
 8. 执行登录、Viewer 越权拦截和事实审核的发布后冒烟测试。
 
-## 4. 生产必填环境变量
+## 4. Render + Supabase 部署补充
+
+当前公开 Demo 采用 Render Web Service + Supabase Session pooler。Web 服务使用根目录 `Dockerfile`，数据库必须使用 Supabase IPv4 Session pooler 连接串，不使用 Direct connection 或 Transaction pooler。
+
+FastAPI 可作为第二个 Render Web Service 独立部署：
+
+- Root directory: `services/data-ai-api`
+- Runtime: Docker
+- Health check path: `/health/ready`
+- 环境变量：`APP_ENV=production`、`PROVIDER_MODE=mock`
+
+`services/data-ai-api/Dockerfile` 会读取平台注入的 `PORT`，本地和 Compose 未注入时默认 `8000`。FastAPI 部署完成后，把 Web 服务的 `DATA_AI_API_URL` 设置为该服务的公网或私网地址。
+
+生产对外使用前必须确认：`ALLOW_DEMO_AUTH=false`，GitHub 临时 PAT 已删除，公开仓库与原私有仓库的归属策略已确定。
+
+## 5. Notion 行业雷达每日同步
+
+仓库包含 GitHub Actions 工作流 `.github/workflows/sync-notion-intelligence.yml`，默认每天北京时间 13:10 运行，也可手动触发。同步链路为：Notion 行业雷达 → Supabase/PostgreSQL → 网站 `/intelligence`。
+
+GitHub 需要配置以下 Secrets：
+
+- `NOTION_TOKEN`：Notion Internal Integration token。需要把 `行业雷达` 根页面分享给该 integration。
+- `DATABASE_URL`：Supabase IPv4 Session pooler 连接串，必须与 Web 服务使用同一个数据库。
+
+可选 Repository Variables：
+
+- `NOTION_INDUSTRY_RADAR_ROOT_PAGE_ID`：默认 `3ac46ba20d9a8144ba0ae53e401dd80a`。
+- `SYNC_COMMIT_SNAPSHOT=true`：额外把 `data/notion-intelligence-snapshot.json` 提交回 GitHub。公开仓库慎用，因为这会把 Notion 研究快照公开留档。
+
+本地仅验证解析、不写数据库：
+
+```powershell
+$env:NOTION_TOKEN="secret_xxx"
+$env:NOTION_SYNC_DRY_RUN="true"
+$env:NOTION_SYNC_SNAPSHOT_PATH="data/notion-intelligence-snapshot.json"
+npm.cmd run sync:notion
+```
+
+同步脚本会解析各专题页中 `最新动态（倒序）` 或 `最新访谈（倒序）` 下面的 `YYYY-MM-DD｜标题` 三级标题，并将条目 upsert 到 `intelligence_items`。页面格式变化时，应先 dry-run 生成快照检查字段映射。
+
+## 6. 生产必填环境变量
 
 ```text
 APP_URL
@@ -70,9 +110,17 @@ OPENAI_API_KEY
 OPENAI_MODEL
 WIND_ADAPTER_ENABLED
 WIND_API_ENDPOINT
+PUBLIC_MARKET_DATA_CACHE_HOURS=24
 ```
 
-## 5. 发布门禁
+Comparable-company market data uses public end-of-day sources without an API key:
+Tencent Finance supplies the prior close and market-cap basis; Eastmoney Data
+Center supplies reported revenue and margins for US, China, and Hong Kong
+companies. The web server caches each snapshot for
+`PUBLIC_MARKET_DATA_CACHE_HOURS` (24 by default). The dashboard leaves any
+unavailable field blank and labels the source, rather than displaying estimates.
+
+## 7. 发布门禁
 
 ```bash
 npm ci
@@ -93,6 +141,6 @@ npm audit --omit=dev --audit-level=high
 - Demo Provider 关闭检查；
 - 数据库恢复演练。
 
-## 6. 当前未执行事项
+## 8. 当前未执行事项
 
 本次开发环境没有 Docker 或 PostgreSQL 可执行程序，因此无法在本机启动 Compose、实际应用迁移或执行 seed。配置和迁移已生成，Web 构建与 Demo 模式的自动化测试已通过。

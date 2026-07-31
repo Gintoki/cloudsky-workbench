@@ -24,7 +24,11 @@ import {
 } from "./notion-industry-radar";
 
 function shouldUseSeedData(user: AuthUser): boolean {
-  return !hasDatabase() || user.email.endsWith("@cloudsky.demo");
+  return (
+    process.env.USE_DEMO_DATA === "true" ||
+    !hasDatabase() ||
+    user.email.endsWith("@cloudsky.demo")
+  );
 }
 
 function seedRecords(): IntelligenceRecord[] {

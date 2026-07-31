@@ -10,13 +10,14 @@
     "build": "vinext build",
     "start": "vinext start",
     "typecheck": "tsc --noEmit",
-    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern coverage",
+    "lint": "eslint . --ignore-pattern dist --ignore-pattern .next --ignore-pattern coverage --ignore-pattern playwright-report --ignore-pattern test-results",
     "test": "npm run test:unit",
     "test:unit": "vitest run --config vitest.config.mjs",
     "test:e2e": "node scripts/run-e2e.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx db/seed.ts"
+    "db:seed": "tsx db/seed.ts",
+    "sync:notion": "node scripts/sync-notion-intelligence.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",

@@ -1,28 +1,96 @@
 "use client";
 
 import {
-  Activity,
   ArrowUpRight,
-  BriefcaseBusiness,
-  CheckCircle2,
+  ChevronRight,
   Clock3,
-  Database,
-  FileQuestion,
-  Newspaper,
-  Scale,
+  ListTodo,
+  RefreshCw,
+  Search,
+  TrendingDown,
+  TrendingUp,
 } from "lucide-react";
 import Link from "next/link";
-import { DemoBanner, ErrorState, LoadingState } from "./page-states";
-import { useApiData } from "@/lib/client/use-api-data";
-import type { AuditRecord, FactRecord, MetricRecord } from "@/lib/domain/types";
+import { useState } from "react";
 import type { AuthUser } from "@/lib/auth/types";
+import { useApiData } from "@/lib/client/use-api-data";
+import type {
+  AuditRecord,
+  ComparableMarketDataResult,
+  ComparableMarketRecord,
+  FactRecord,
+  IntelligenceListResult,
+  MetricRecord,
+} from "@/lib/domain/types";
+import { comparableUniverse } from "@/lib/market-data/coverage-universe";
+import {
+  DataTable,
+  EmptyState,
+  MetricCard,
+  PageHeader,
+  SectionCard,
+  Skeleton,
+  StatusBadge,
+} from "./ui/workbench-primitives";
+
+type ComparableSort = "MARKET_CAP" | "CHANGE" | "PS";
+type MarketFilter = "ALL" | "US" | "CN" | "HK";
+type MetricMode = MetricRecord["valueType"];
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeZone: "Asia/Shanghai",
+  }).format(new Date(`${value}T00:00:00+08:00`));
+}
+
+function formatTimestamp(value: string | null | undefined) {
+  if (!value) return "暂无数据";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "暂无数据";
+  return new Intl.DateTimeFormat("zh-CN", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Shanghai",
+  }).format(date);
+}
+
+function formatPrice(
+  value: number | null,
+  currency: ComparableMarketRecord["currency"],
+) {
+  if (value === null) return "--";
+  const prefix = currency === "USD" ? "$" : currency === "HKD" ? "HK$" : "CNY ";
+  return `${prefix}${value.toLocaleString("en-US", {
+    maximumFractionDigits: 2,
+    minimumFractionDigits: 2,
+  })}`;
+}
+
+function formatScale(
+  value: number | null,
+  currency: ComparableMarketRecord["currency"],
+) {
+  if (value === null) return "--";
+  const absolute = Math.abs(value);
+  const divisor = absolute >= 1_000_000_000 ? 1_000_000_000 : 1_000_000;
+  const suffix = divisor === 1_000_000_000 ? "B" : "M";
+  return `${currency} ${(value / divisor).toLocaleString("en-US", {
+    maximumFractionDigits: 1,
+  })}${suffix}`;
+}
 
 function formatMetric(metric: MetricRecord) {
   if (metric.unit === "%") return `${(metric.value * 100).toFixed(1)}%`;
   return `${metric.value.toLocaleString("zh-CN")} ${metric.unit}`;
 }
 
-function timeAgo(value: string) {
+function formatFactValue(fact: FactRecord | undefined) {
+  if (!fact?.numericValue) return "暂无数据";
+  return `${fact.numericValue}${fact.unit ? ` ${fact.unit}` : ""}`;
+}
+
+function formatRelative(value: string) {
   const minutes = Math.max(
     1,
     Math.round((Date.now() - new Date(value).getTime()) / 60_000),
@@ -32,287 +100,421 @@ function timeAgo(value: string) {
   return `${Math.round(minutes / 1_440)} 天前`;
 }
 
+function getPriceSales(record: ComparableMarketRecord) {
+  if (
+    record.marketCap === null ||
+    record.revenue === null ||
+    record.revenue === 0 ||
+    record.currency !== record.financialCurrency
+  ) {
+    return null;
+  }
+  return record.marketCap / record.revenue;
+}
+
+function DashboardSkeleton() {
+  return (
+    <main className="os-command-page" aria-label="正在加载 Command Center">
+      <div className="os-loading-header">
+        <Skeleton className="os-skeleton-title" />
+        <Skeleton className="os-skeleton-copy" />
+      </div>
+      <div className="os-kpi-grid">
+        {Array.from({ length: 4 }, (_, index) => <Skeleton className="os-skeleton-card" key={index} />)}
+      </div>
+      <div className="os-dashboard-grid os-dashboard-grid-primary">
+        <Skeleton className="os-skeleton-panel" />
+        <Skeleton className="os-skeleton-panel" />
+      </div>
+    </main>
+  );
+}
+
 export function DashboardView({ user }: { user: AuthUser }) {
+  const [marketRequest, setMarketRequest] = useState(0);
+  const [marketFilter, setMarketFilter] = useState<MarketFilter>("ALL");
+  const [marketSort, setMarketSort] = useState<ComparableSort>("MARKET_CAP");
+  const [marketQuery, setMarketQuery] = useState("");
+  const [showAllComparables, setShowAllComparables] = useState(false);
+  const [activeCategory, setActiveCategory] = useState("ALL");
+  const [metricMode, setMetricMode] = useState<MetricMode>("ACTUAL");
   const facts = useApiData<FactRecord[]>("/api/facts");
   const metrics = useApiData<MetricRecord[]>("/api/metrics");
-  const canReadAudit =
-    user.role === "ADMINISTRATOR" || user.role === "DIRECTOR";
+  const intelligence = useApiData<IntelligenceListResult>(
+    "/api/intelligence?sort=newest",
+  );
+  const comparableMarketData = useApiData<ComparableMarketDataResult>(
+    `/api/market-data/comparables${
+      marketRequest ? `?refresh=1&request=${marketRequest}` : ""
+    }`,
+  );
+  const canReadAudit = user.role === "ADMINISTRATOR" || user.role === "DIRECTOR";
   const audits = useApiData<AuditRecord[]>(
     canReadAudit ? "/api/audit" : "/api/facts",
   );
 
-  if (facts.loading || metrics.loading || audits.loading) return <LoadingState />;
-  if (facts.error || metrics.error || audits.error) {
+  const isLoading = facts.loading || metrics.loading || intelligence.loading || audits.loading;
+  const hasError = facts.error || metrics.error || intelligence.error || audits.error;
+
+  if (isLoading) return <DashboardSkeleton />;
+
+  if (hasError) {
     return (
-      <ErrorState
-        retry={() => {
-          void facts.retry();
-          void metrics.retry();
-          void audits.retry();
-        }}
-      />
+      <main className="os-command-page">
+        <SectionCard title="Command Center" eyebrow="数据状态">
+          <EmptyState
+            description="部分核心数据暂时不可用，系统没有使用缓存或模拟数据替代结果。"
+            title="数据加载失败"
+          />
+        </SectionCard>
+      </main>
     );
   }
 
   const factRows = facts.data ?? [];
   const metricRows = metrics.data ?? [];
-  const auditRows = canReadAudit
-    ? ((audits.data ?? []) as AuditRecord[])
-    : [];
-  const pending =
-    factRows.filter((item) => item.status === "PENDING_REVIEW").length +
-    metricRows.filter((item) => item.status === "PENDING_REVIEW").length;
-  const approvedMetrics = metricRows.filter(
-    (item) => item.status === "APPROVED",
+  const intelligenceRows = intelligence.data?.items ?? [];
+  const categories = intelligence.data?.categories ?? [];
+  const auditRows = canReadAudit ? ((audits.data ?? []) as AuditRecord[]) : [];
+  const comparableByTicker = new Map(
+    (comparableMarketData.data?.items ?? []).map((item) => [item.ticker, item]),
   );
+  const approvedMetrics = metricRows.filter((item) => item.status === "APPROVED");
+  const pendingFacts = factRows.filter((item) => item.status === "PENDING_REVIEW");
+  const pendingMetrics = metricRows.filter((item) => item.status === "PENDING_REVIEW");
+  const pendingCount = pendingFacts.length + pendingMetrics.length;
+  const valuationFact = factRows.find(
+    (item) =>
+      item.status === "APPROVED" &&
+      /估值|融资|市值/.test(`${item.primaryCategory} ${item.title}`) &&
+      item.numericValue,
+  );
+  const contractFact = factRows.find(
+    (item) =>
+      item.status === "APPROVED" &&
+      /订单|合同|在手/.test(`${item.primaryCategory} ${item.title}`) &&
+      item.numericValue,
+  );
+  const startOfWeek = new Date();
+  startOfWeek.setHours(0, 0, 0, 0);
+  startOfWeek.setDate(startOfWeek.getDate() - ((startOfWeek.getDay() + 6) % 7));
+  const weeklyIntelligenceCount = intelligenceRows.filter(
+    (item) => new Date(item.publishedAt).getTime() >= startOfWeek.getTime(),
+  ).length;
+  const activeStream =
+    activeCategory === "ALL"
+      ? intelligenceRows
+      : intelligenceRows.filter((item) => item.categorySlug === activeCategory);
+  const visibleMetrics = approvedMetrics.filter((item) => item.valueType === metricMode);
+  const comparableRows = comparableUniverse
+    .map((security) => ({ security, record: comparableByTicker.get(security.ticker) }))
+    .filter(({ security }) => marketFilter === "ALL" || security.market === marketFilter)
+    .filter(({ security }) => {
+      const query = marketQuery.trim().toLocaleLowerCase();
+      return !query || `${security.ticker} ${security.name}`.toLocaleLowerCase().includes(query);
+    })
+    .sort((left, right) => {
+      const leftPS = left.record ? getPriceSales(left.record) : null;
+      const rightPS = right.record ? getPriceSales(right.record) : null;
+      if (marketSort === "CHANGE") {
+        return (right.record?.priceChangePercent ?? -Infinity) - (left.record?.priceChangePercent ?? -Infinity);
+      }
+      if (marketSort === "PS") return (rightPS ?? -Infinity) - (leftPS ?? -Infinity);
+      return (right.record?.marketCap ?? -Infinity) - (left.record?.marketCap ?? -Infinity);
+    });
+  const shownComparables = showAllComparables ? comparableRows : comparableRows.slice(0, 6);
+  const actionItems = [
+    ...pendingFacts.map((fact) => ({
+      id: fact.id,
+      title: fact.title,
+      owner: fact.ownerName,
+      href: "/facts",
+      status: "待审批",
+      updatedAt: fact.updatedAt,
+    })),
+    ...pendingMetrics.map((metric) => ({
+      id: metric.id,
+      title: metric.name,
+      owner: "指标库",
+      href: "/metrics",
+      status: "待审批",
+      updatedAt: metric.updatedAt,
+    })),
+  ].slice(0, 4);
+  const marketAvailability = comparableMarketData.data?.availability;
 
   return (
-    <main className="page">
-      <div className="page-header">
-        <div>
-          <h1 className="page-title">决策工作台</h1>
-          <p className="page-description">
-            汇总需要行动的审核、经营指标与近期更新；不使用虚构实时行情补位。
-          </p>
-        </div>
-        <div style={{ color: "#778295", fontSize: 11 }}>
-          数据权限：{user.role}
-        </div>
-      </div>
-      <DemoBanner />
+    <main className="os-command-page">
+      <PageHeader
+        actions={
+          <>
+            <label className="os-range-select">
+              <span>时间范围</span>
+              <select aria-label="行情时间范围" defaultValue="EOD">
+                <option value="EOD">前收盘日终</option>
+              </select>
+            </label>
+            <button
+              aria-label="刷新市场数据"
+              className="os-refresh-button"
+              disabled={comparableMarketData.loading}
+              onClick={() => setMarketRequest((current) => current + 1)}
+              title="刷新公开市场数据"
+              type="button"
+            >
+              <RefreshCw className={comparableMarketData.loading ? "is-spinning" : ""} size={16} />
+              刷新
+            </button>
+          </>
+        }
+        description="资本市场、经营指标与行业情报的统一决策入口"
+        meta={
+          <>
+            <span>最后更新 {formatTimestamp(comparableMarketData.data?.fetchedAt)}</span>
+            <StatusBadge tone={marketAvailability === "LIVE" ? "success" : "warning"}>
+              <span className="os-sync-dot" aria-hidden="true" />
+              {marketAvailability === "LIVE" ? "公开市场数据已同步" : "市场数据待刷新"}
+            </StatusBadge>
+          </>
+        }
+        title="Command Center"
+      />
 
-      <section className="kpi-strip" aria-label="核心概览">
-        <div className="kpi">
-          <div className="kpi-label">
-            待审核内容 <Clock3 size={14} />
-          </div>
-          <div className="kpi-value">{pending}</div>
-          <div className="kpi-note">
-            {user.role === "VIEWER" ? "Viewer 不显示未审核内容" : "事实与指标"}
-          </div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">
-            已批准公司事实 <CheckCircle2 size={14} />
-          </div>
-          <div className="kpi-value">
-            {factRows.filter((item) => item.status === "APPROVED").length}
-          </div>
-          <div className="kpi-note">当前有效 Demo 记录</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">
-            结构化指标 <Database size={14} />
-          </div>
-          <div className="kpi-value">{metricRows.length}</div>
-          <div className="kpi-note">按当前角色过滤后</div>
-        </div>
-        <div className="kpi">
-          <div className="kpi-label">
-            近期需回复 <FileQuestion size={14} />
-          </div>
-          <div className="kpi-value">0</div>
-          <div className="kpi-note">Q&A 模块将在 Phase 4 开放</div>
-        </div>
+      <section className="os-kpi-grid" aria-label="关键业务概览">
+        <MetricCard
+          detail={valuationFact ? valuationFact.periodLabel ?? valuationFact.sourceTitle : "估值数据待接入"}
+          href="/facts"
+          label="公司最新估值"
+          tone={valuationFact ? "success" : "neutral"}
+          value={formatFactValue(valuationFact)}
+        />
+        <MetricCard
+          detail={contractFact ? contractFact.periodLabel ?? contractFact.sourceTitle : "订单数据待接入"}
+          href="/facts"
+          label="在手订单 / 合同"
+          tone={contractFact ? "success" : "neutral"}
+          value={formatFactValue(contractFact)}
+        />
+        <MetricCard
+          detail={weeklyIntelligenceCount ? "按发布时间统计" : "本周暂无更新"}
+          href="/intelligence"
+          label="本周行业更新"
+          tone="success"
+          value={`${weeklyIntelligenceCount} 条`}
+        />
+        <MetricCard
+          detail={pendingCount ? "事实与指标待审批" : "当前无待审批事项"}
+          href="/facts"
+          label="待处理任务"
+          tone={pendingCount ? "warning" : "success"}
+          value={`${pendingCount} 项`}
+        />
       </section>
 
-      <div className="dashboard-grid">
-        <div className="stack">
-          <section className="panel">
-            <div className="panel-header">
-              <h2 className="panel-title">决策与审核队列</h2>
-              <span className="panel-meta">按紧急程度排序</span>
+      <div className="os-dashboard-grid os-dashboard-grid-primary">
+        <SectionCard
+          action={
+            <div className="os-card-controls">
+              <button className="os-text-button" onClick={() => setShowAllComparables((show) => !show)} type="button">
+                {showAllComparables ? "收起" : `查看全部 ${comparableRows.length}`}
+                <ArrowUpRight size={14} />
+              </button>
             </div>
-            <ul className="decision-list">
-              {pending > 0 ? (
-                <>
-                  <li className="decision-item">
-                    <span className="decision-icon">
-                      <Scale size={14} />
-                    </span>
-                    <div>
-                      <div className="decision-title">
-                        {pending} 条事实或指标等待审核
-                      </div>
-                      <div className="decision-note">
-                        审核前请核对来源、口径和期间
-                      </div>
-                    </div>
-                    <Link className="button small" href="/facts">
-                      进入审核 <ArrowUpRight size={12} />
-                    </Link>
-                  </li>
-                </>
-              ) : (
-                <li className="decision-item">
-                  <span className="decision-icon">
-                    <CheckCircle2 size={14} />
-                  </span>
-                  <div>
-                    <div className="decision-title">当前没有待审核内容</div>
-                    <div className="decision-note">
-                      仅显示当前角色有权查看的队列
-                    </div>
-                  </div>
-                </li>
-              )}
-              <li className="decision-item">
-                <span className="decision-icon">
-                  <BriefcaseBusiness size={14} />
-                </span>
-                <div>
-                  <div className="decision-title">融资、并购与战略事项</div>
-                  <div className="decision-note">
-                    尚未录入真实事项；任务模块启用后在此聚合
-                  </div>
-                </div>
-                <span className="badge draft">空状态</span>
-              </li>
-              <li className="decision-item">
-                <span className="decision-icon">
-                  <Newspaper size={14} />
-                </span>
-                <div>
-                  <div className="decision-title">今日行业动态</div>
-                  <div className="decision-note">
-                    未配置合规 RSS 或数据 API，不展示模拟新闻
-                  </div>
-                </div>
-                <span className="badge draft">待配置</span>
-              </li>
-            </ul>
-          </section>
+          }
+          className="os-market-card"
+          eyebrow="PUBLIC MARKET DATA"
+          title="可比公司市场表现"
+        >
+          <div className="os-market-toolbar">
+            <div className="os-filter-pills" aria-label="市场筛选">
+              {(["ALL", "US", "CN", "HK"] as MarketFilter[]).map((market) => (
+                <button
+                  className={marketFilter === market ? "is-active" : ""}
+                  key={market}
+                  onClick={() => setMarketFilter(market)}
+                  type="button"
+                >
+                  {market === "ALL" ? "全部" : market === "CN" ? "A 股" : market === "HK" ? "港股" : "美股"}
+                </button>
+              ))}
+            </div>
+            <div className="os-table-tools">
+              <label className="os-table-search">
+                <Search aria-hidden="true" size={15} />
+                <input
+                  aria-label="搜索可比公司"
+                  onChange={(event) => setMarketQuery(event.target.value)}
+                  placeholder="搜索公司"
+                  value={marketQuery}
+                />
+              </label>
+              <label className="os-sort-select">
+                <span>排序</span>
+                <select
+                  aria-label="可比公司排序"
+                  onChange={(event) => setMarketSort(event.target.value as ComparableSort)}
+                  value={marketSort}
+                >
+                  <option value="MARKET_CAP">市值</option>
+                  <option value="CHANGE">涨跌幅</option>
+                  <option value="PS">P/S</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          {comparableMarketData.data?.message && (
+            <div className="os-data-notice">{comparableMarketData.data.message}</div>
+          )}
+          {comparableMarketData.error && (
+            <div className="os-data-notice is-danger">市场数据暂时不可用，未显示估算值。</div>
+          )}
+          <DataTable className={showAllComparables ? "is-expanded" : ""}>
+            <div className="os-table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Ticker</th>
+                    <th>Company</th>
+                    <th>Market / Sector</th>
+                    <th>Price</th>
+                    <th>Change</th>
+                    <th>Market Cap</th>
+                    <th>P/S</th>
+                    <th>Updated</th>
+                    <th aria-label="操作" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {shownComparables.map(({ security, record }) => {
+                    const priceSales = record ? getPriceSales(record) : null;
+                    const change = record?.priceChangePercent ?? null;
+                    return (
+                      <tr key={security.ticker}>
+                        <td><span className="os-data-mono os-ticker">{security.ticker}</span></td>
+                        <td><strong className="os-company-name">{security.name}</strong></td>
+                        <td><span className="os-market-label">{security.market === "CN" ? "A 股" : security.market === "HK" ? "港股" : "美股"}</span></td>
+                        <td><strong className="os-data-mono">{formatPrice(record?.price ?? null, security.currency)}</strong></td>
+                        <td>
+                          {change === null ? (
+                            <span className="os-muted-data" title="当前日终快照仅提供前收盘价">--</span>
+                          ) : (
+                            <span className={`os-change ${change >= 0 ? "is-positive" : "is-negative"}`}>
+                              {change >= 0 ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
+                              {change >= 0 ? "+" : ""}{change.toFixed(2)}%
+                            </span>
+                          )}
+                        </td>
+                        <td><span className="os-data-mono">{formatScale(record?.marketCap ?? null, security.currency)}</span></td>
+                        <td><span className="os-data-mono">{priceSales === null ? "--" : `${priceSales.toFixed(1)}x`}</span></td>
+                        <td><span className="os-data-date">{record?.priceAsOf ? formatDate(record.priceAsOf) : "--"}</span></td>
+                        <td><Link aria-label={`查看 ${security.name} 研究`} className="os-row-action" href="/intelligence"><ChevronRight size={16} /></Link></td>
+                      </tr>
+                    );
+                  })}
+                  {!shownComparables.length && (
+                    <tr><td colSpan={9}><EmptyState description="尝试清除搜索条件或切换市场。" title="没有匹配的可比公司" /></td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </DataTable>
+          <div className="os-card-footer">
+            <span>前收盘价来自腾讯财经，财务数据来自东方财富公开源。</span>
+            <span>日终快照 · 24 小时缓存</span>
+          </div>
+        </SectionCard>
 
-          <section className="panel">
-            <div className="panel-header">
-              <h2 className="panel-title">最新经营指标</h2>
-              <Link className="button ghost small" href="/metrics">
-                查看指标库 <ArrowUpRight size={12} />
+        <SectionCard
+          action={<Link className="os-text-button" href="/intelligence">查看全部 <ArrowUpRight size={14} /></Link>}
+          className="os-intelligence-card"
+          eyebrow="INDUSTRY INTELLIGENCE"
+          title="今日行业动态"
+        >
+          <div className="os-category-tabs" aria-label="行业动态分类">
+            <button className={activeCategory === "ALL" ? "is-active" : ""} onClick={() => setActiveCategory("ALL")} type="button">全部</button>
+            {categories.slice(0, 3).map((category) => (
+              <button className={activeCategory === category.value ? "is-active" : ""} key={category.value} onClick={() => setActiveCategory(category.value)} type="button">{category.label}</button>
+            ))}
+          </div>
+          <div className="os-intelligence-list">
+            {activeStream.slice(0, 5).map((item) => (
+              <Link className="os-intelligence-item" href={`/intelligence/${item.id}`} key={item.id}>
+                <div>
+                  <div className="os-intelligence-meta">
+                    <StatusBadge tone="info">{item.categoryName}</StatusBadge>
+                    <span>{formatRelative(item.publishedAt)}</span>
+                  </div>
+                  <strong>{item.title}</strong>
+                  <p>{item.summary}</p>
+                </div>
+                <ChevronRight aria-hidden="true" size={16} />
               </Link>
-            </div>
-            <div className="panel-body">
-              <div className="metric-grid">
-                {approvedMetrics.map((metric) => (
-                  <div className="metric-tile" key={metric.id}>
-                    <div className="metric-name">
-                      <span>{metric.name}</span>
-                      <span>{metric.periodLabel}</span>
-                    </div>
-                    <div className="metric-number">{formatMetric(metric)}</div>
-                    <div style={{ marginTop: 5 }}>
-                      {metric.yoy !== null ? (
-                        <span
-                          className={`change ${metric.yoy >= 0 ? "positive" : "negative"}`}
-                        >
-                          YoY {metric.yoy >= 0 ? "+" : ""}
-                          {(metric.yoy * 100).toFixed(1)}%
-                        </span>
-                      ) : (
-                        <span className="change" style={{ color: "#778295" }}>
-                          无可比期间
-                        </span>
-                      )}
-                    </div>
+            ))}
+            {!activeStream.length && <EmptyState description="切换分类或等待 Notion 同步。" title="暂无行业动态" />}
+          </div>
+        </SectionCard>
+      </div>
+
+      <div className="os-dashboard-grid os-dashboard-grid-secondary">
+        <SectionCard
+          action={<Link className="os-text-button" href="/metrics">指标库 <ArrowUpRight size={14} /></Link>}
+          eyebrow="OPERATING METRICS"
+          title="公司关键经营指标"
+        >
+          <div className="os-metric-tabs" aria-label="指标类型">
+            {(["ACTUAL", "BUDGET", "FORECAST"] as MetricMode[]).map((mode) => (
+              <button className={metricMode === mode ? "is-active" : ""} key={mode} onClick={() => setMetricMode(mode)} type="button">
+                {mode === "ACTUAL" ? "Actual" : mode === "BUDGET" ? "Budget" : "Forecast"}
+              </button>
+            ))}
+          </div>
+          {visibleMetrics.length ? (
+            <div className="os-operating-metrics">
+              {visibleMetrics.slice(0, 4).map((metric) => (
+                <Link className="os-operating-metric" href="/metrics" key={metric.id}>
+                  <div><span>{metric.name}</span><small>{metric.periodLabel}</small></div>
+                  <strong>{formatMetric(metric)}</strong>
+                  <div className="os-metric-trend">
+                    {metric.yoy === null ? <span>暂无同比数据</span> : <span className={metric.yoy >= 0 ? "is-positive" : "is-negative"}>{metric.yoy >= 0 ? "+" : ""}{(metric.yoy * 100).toFixed(1)}% YoY</span>}
+                    {metric.unit === "%" && <i aria-hidden="true"><b style={{ width: `${Math.min(Math.max(metric.value * 100, 3), 100)}%` }} /></i>}
                   </div>
-                ))}
-              </div>
-            </div>
-          </section>
-
-          <section className="panel">
-            <div className="panel-header">
-              <h2 className="panel-title">重点公司与估值变化</h2>
-              <span className="panel-meta">Watchlist</span>
-            </div>
-            <div className="empty-state compact">
-              <div>
-                <div className="empty-icon">
-                  <Scale size={15} />
-                </div>
-                <div className="empty-title">尚未配置行情适配器</div>
-                <div className="empty-text">
-                  Phase 2 将先提供 Mock、CSV/Excel 与 Manual Adapter；不会在这里伪造实时价格。
-                </div>
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <div className="stack">
-          <section className="panel">
-            <div className="panel-header">
-              <h2 className="panel-title">最近更新</h2>
-              {canReadAudit && (
-                <Link className="button ghost small" href="/audit">
-                  全部日志
                 </Link>
-              )}
+              ))}
             </div>
-            <div className="panel-body">
-              {auditRows.length > 0 ? (
-                <ul className="activity-list">
-                  {auditRows.slice(0, 6).map((audit) => (
-                    <li className="activity-item" key={audit.id}>
-                      <div className="activity-title">
-                        {audit.actorName} · {audit.action} ·{" "}
-                        {audit.resourceTitle}
-                      </div>
-                      <div className="activity-meta">
-                        {timeAgo(audit.createdAt)} · {audit.requestId}
-                      </div>
-                    </li>
-                  ))}
-                </ul>
-              ) : (
-                <div className="empty-state compact">
-                  <div>
-                    <div className="empty-icon">
-                      <Clock3 size={15} />
-                    </div>
-                    <div className="empty-title">
-                      当前角色不显示审计详情
-                    </div>
-                    <div className="empty-text">
-                      业务内容仍会按权限展示，敏感审计记录仅授权角色可见。
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          </section>
+          ) : (
+            <EmptyState
+              description={`${metricMode === "ACTUAL" ? "实际" : metricMode === "BUDGET" ? "预算" : "预测"}指标尚未接入或未获批准。`}
+              title="暂无可展示的真实指标"
+            />
+          )}
+        </SectionCard>
 
-          <section className="panel">
-            <div className="panel-header">
-              <h2 className="panel-title">快速入口</h2>
-            </div>
-            <ul className="decision-list">
-              <li className="decision-item">
-                <span className="decision-icon">
-                  <Database size={14} />
-                </span>
+        <SectionCard
+          action={<Link className="os-text-button" href="/facts">查看全部 <ArrowUpRight size={14} /></Link>}
+          eyebrow="DECISION QUEUE"
+          title="待办事项与重要决策"
+        >
+          <div className="os-decision-list">
+            {actionItems.map((item) => (
+              <Link className="os-decision-item" href={item.href} key={item.id}>
+                <span className="os-decision-priority"><ListTodo size={15} /></span>
                 <div>
-                  <div className="decision-title">公司事实库</div>
-                  <div className="decision-note">统一口径与证据来源</div>
+                  <strong>{item.title}</strong>
+                  <span>负责人：{item.owner || "未设置"} · 截止时间：未设置</span>
                 </div>
-                <Link className="button small" href="/facts">
-                  打开
-                </Link>
-              </li>
-              <li className="decision-item">
-                <span className="decision-icon">
-                  <Activity size={14} />
-                </span>
-                <div>
-                  <div className="decision-title">指标库</div>
-                  <div className="decision-note">实际、预算与预测</div>
-                </div>
-                <Link className="button small" href="/metrics">
-                  打开
-                </Link>
-              </li>
-            </ul>
-          </section>
-        </div>
+                <StatusBadge tone="warning">{item.status}</StatusBadge>
+              </Link>
+            ))}
+            {!actionItems.length && (
+              <EmptyState description="当前没有等待审批的事实或指标。" title="暂无待办事项" />
+            )}
+          </div>
+          {!!auditRows.length && (
+            <div className="os-recent-audit">
+              <Clock3 size={14} /> 最近操作：{auditRows[0].actorName} · {auditRows[0].action} · {formatRelative(auditRows[0].createdAt)}
+            </div>
+          )}
+        </SectionCard>
       </div>
     </main>
   );

@@ -3,10 +3,10 @@ import "./globals.css";
 
 export const metadata: Metadata = {
   title: {
-    default: "CloudSky Workbench",
-    template: "%s · CloudSky Workbench",
+    default: "CloudSky Intelligence OS",
+    template: "%s | CloudSky Intelligence OS",
   },
-  description: "云天畅想投融资与战略团队内部工作台",
+  description: "CloudSky 资本与战略团队的智能决策系统。",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",
