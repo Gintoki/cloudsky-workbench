@@ -1,0 +1,68 @@
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_DB: cloudsky_workbench
+      POSTGRES_USER: cloudsky
+      POSTGRES_PASSWORD: cloudsky_dev
+    ports:
+      - "5432:5432"
+    volumes:
+      - cloudsky_pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cloudsky -d cloudsky_workbench"]
+      interval: 5s
+      timeout: 3s
+      retries: 15
+
+  migrate:
+    build:
+      context: .
+      target: dependencies
+    working_dir: /app
+    command: ["npm", "run", "db:migrate"]
+    environment:
+      DATABASE_URL: postgresql://cloudsky:cloudsky_dev@db:5432/cloudsky_workbench
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      db:
+        condition: service_healthy
+
+  web:
+    build:
+      context: .
+      target: dependencies
+    working_dir: /app
+    command: ["npm", "run", "dev", "--", "--host", "0.0.0.0"]
+    environment:
+      DATABASE_URL: postgresql://cloudsky:cloudsky_dev@db:5432/cloudsky_workbench
+      SESSION_SECRET: local-compose-session-secret-change-before-production
+      SESSION_TTL_HOURS: 12
+      ALLOW_DEMO_AUTH: "true"
+      DATA_AI_API_URL: http://data-ai-api:8000
+    ports:
+      - "3000:3000"
+    volumes:
+      - .:/app
+      - /app/node_modules
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  data-ai-api:
+    build:
+      context: ./services/data-ai-api
+    environment:
+      APP_ENV: development
+      DATABASE_URL: postgresql://cloudsky:cloudsky_dev@db:5432/cloudsky_workbench
+      PROVIDER_MODE: mock
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  cloudsky_pg_data:
