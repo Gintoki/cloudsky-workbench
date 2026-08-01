@@ -2761,25 +2761,29 @@ a {
 
 /* Intelligence OS v2: scoped visual system for the workbench shell. */
 .command-shell {
-  --os-page: #0b0e11;
-  --os-sidebar: #090c0f;
-  --os-card: #11161b;
-  --os-raised: #151b21;
-  --os-hover: #192129;
-  --os-line: rgba(148, 163, 184, 0.14);
-  --os-line-strong: rgba(52, 211, 153, 0.35);
-  --os-text: #f1f5f9;
-  --os-muted: #94a3b8;
-  --os-weak: #64748b;
-  --os-green: #34d399;
-  --os-warning: #fbbf24;
-  --os-risk: #f87171;
-  --os-info: #60a5fa;
+  --os-page: #101418;
+  --os-sidebar: #0d1216;
+  --os-card: #161d23;
+  --os-raised: #1b242c;
+  --os-hover: #222d36;
+  --os-control: #202a33;
+  --os-line: rgba(169, 184, 198, 0.18);
+  --os-line-strong: rgba(60, 207, 145, 0.5);
+  --os-text: #f4f7fa;
+  --os-muted: #b1becb;
+  --os-weak: #788a9b;
+  --os-green: #3ccf91;
+  --os-warning: #f0b429;
+  --os-risk: #f27f7f;
+  --os-danger: #f27f7f;
+  --os-info: #74a9ff;
+  --os-panel: #131a20;
   display: grid;
   grid-template-columns: 248px minmax(0, 1fr);
   min-height: 100vh;
   background: var(--os-page);
   color: var(--os-text);
+  color-scheme: dark;
   font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   letter-spacing: 0;
 }
@@ -3066,9 +3070,14 @@ a {
 .os-page-actions { color: var(--os-text); }
 
 .os-range-select,
-.os-sort-select { display: inline-flex; height: 32px; align-items: center; gap: 7px; padding: 0 8px; border: 1px solid var(--os-line); border-radius: 7px; background: var(--os-raised); color: var(--os-muted); font-size: 11px; }
+.os-sort-select { display: inline-flex; height: 34px; align-items: center; gap: 8px; padding: 0 9px; border: 1px solid var(--os-line); border-radius: 7px; background: var(--os-control); color: var(--os-muted); font-size: 11px; }
 .os-range-select select,
-.os-sort-select select { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--os-text); font: inherit; }
+.os-sort-select select { min-width: 84px; border: 0; border-radius: 4px; outline: 0; background: var(--os-control); color: var(--os-text); font: inherit; font-weight: 600; }
+.os-range-select select option,
+.os-sort-select select option,
+.command-shell select option { background: var(--os-raised); color: var(--os-text); }
+.os-range-select:focus-within,
+.os-sort-select:focus-within { border-color: var(--os-line-strong); box-shadow: 0 0 0 3px rgba(60, 207, 145, 0.1); }
 .os-refresh-button,
 .os-text-button {
   display: inline-flex;
