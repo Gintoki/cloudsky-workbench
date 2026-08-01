@@ -2,6 +2,13 @@ import { drizzle, type PostgresJsDatabase } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
 import * as schema from "./schema";
 
+type PostgresClient = ReturnType<typeof postgres>;
+
+const globalForDatabase = globalThis as typeof globalThis & {
+  cloudskyPostgresClient?: PostgresClient;
+  cloudskyPostgresUrl?: string;
+};
+
 export function hasDatabase(): boolean {
   return Boolean(process.env.DATABASE_URL);
 }
@@ -11,17 +18,34 @@ export function getDb(): PostgresJsDatabase<typeof schema> {
   if (!url) {
     throw new Error("DATABASE_URL is required for persistent data access.");
   }
-  // Cloudflare Workers bind socket I/O to the request that created it. A
-  // module-level postgres.js pool therefore fails on the next request.
+  const client = getClient(url);
+  return drizzle(client, { schema });
+}
+
+function getClient(url: string): PostgresClient {
+  if (
+    globalForDatabase.cloudskyPostgresClient &&
+    globalForDatabase.cloudskyPostgresUrl === url
+  ) {
+    return globalForDatabase.cloudskyPostgresClient;
+  }
+
   const client = postgres(url, {
     max: 5,
     prepare: false,
     idle_timeout: 20,
+    keep_alive: 30,
   });
-  return drizzle(client, { schema });
+  globalForDatabase.cloudskyPostgresClient = client;
+  globalForDatabase.cloudskyPostgresUrl = url;
+  return client;
 }
 
 export async function closeDb(): Promise<void> {
-  // Connections are request-scoped. postgres.js closes idle connections using
-  // the configured timeout, so there is no shared client to close here.
+  if (!globalForDatabase.cloudskyPostgresClient) {
+    return;
+  }
+  await globalForDatabase.cloudskyPostgresClient.end({ timeout: 5 });
+  globalForDatabase.cloudskyPostgresClient = undefined;
+  globalForDatabase.cloudskyPostgresUrl = undefined;
 }

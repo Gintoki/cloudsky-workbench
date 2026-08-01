@@ -15,4 +15,6 @@ WORKDIR /app
 ENV NODE_ENV=production
 COPY --from=build /app ./
 EXPOSE 3000
-CMD ["npm", "run", "start", "--", "--host", "0.0.0.0"]
+# Apply pending schema changes before the web server accepts production traffic.
+# Drizzle tracks applied migrations, so repeated starts are safe.
+CMD ["sh", "-c", "npm run db:migrate && npm run start -- --host 0.0.0.0"]
