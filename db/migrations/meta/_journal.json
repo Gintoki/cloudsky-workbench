@@ -22,6 +22,55 @@
       "when": 1785443380028,
       "tag": "0002_tan_gorilla_man",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1785560057963,
+      "tag": "0003_safe_whistler",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1785560600000,
+      "tag": "0004_blue_methodology",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "7",
+      "when": 1785567276419,
+      "tag": "0005_careless_korvac",
+      "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1785581042121,
+      "tag": "0006_illegal_tarot",
+      "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1785582208496,
+      "tag": "0007_previous_jackpot",
+      "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1785590337307,
+      "tag": "0008_polite_namor",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1785596409182,
+      "tag": "0009_bright_gateway",
+      "breakpoints": true
     }
   ]
 }

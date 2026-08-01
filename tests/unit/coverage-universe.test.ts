@@ -3,9 +3,12 @@ import { comparableUniverse } from "../../lib/market-data/coverage-universe";
 
 describe("comparable universe", () => {
   it("keeps the Command Center watchlist uniquely mapped to tickers", () => {
-    expect(comparableUniverse).toHaveLength(25);
+    expect(comparableUniverse.length).toBeGreaterThanOrEqual(25);
     expect(new Set(comparableUniverse.map((security) => security.ticker)).size).toBe(
       comparableUniverse.length,
+    );
+    expect(comparableUniverse.map((security) => security.ticker)).toEqual(
+      expect.arrayContaining(["NET", "0700", "300750", "PDD"]),
     );
   });
 

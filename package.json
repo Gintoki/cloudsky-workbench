@@ -16,7 +16,13 @@
     "test:e2e": "node scripts/run-e2e.mjs",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
-    "db:seed": "tsx db/seed.ts",
+    "db:seed": "node --env-file-if-exists=.env --import tsx db/seed.ts",
+    "db:import-methodology": "tsx scripts/import-company-research-methodology.ts",
+    "db:import-pdf-research": "node --env-file-if-exists=.env --import tsx scripts/import-pdf-company-research.ts",
+    "db:import-company-profiles": "node --env-file-if-exists=.env --import tsx scripts/import-company-research-profiles.ts",
+    "db:sync-research-market": "node --env-file-if-exists=.env --import tsx scripts/sync-company-research-market-data.ts",
+    "db:sync-research-financials": "node --env-file-if-exists=.env --import tsx scripts/sync-company-research-financial-history.ts",
+    "db:sync-research-annual-reports": "node --env-file-if-exists=.env --import tsx scripts/sync-company-research-annual-reports.ts",
     "sync:notion": "node scripts/sync-notion-intelligence.mjs"
   },
   "dependencies": {

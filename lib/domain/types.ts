@@ -142,6 +142,8 @@ export interface ComparableMarketRecord {
   financialCurrency: "USD" | "CNY" | "HKD";
   price: number | null;
   priceChangePercent: number | null;
+  thirtyDayChangePercent: number | null;
+  yearToDateChangePercent: number | null;
   marketCap: number | null;
   revenue: number | null;
   grossMargin: number | null;

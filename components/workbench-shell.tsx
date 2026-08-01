@@ -49,7 +49,7 @@ const navigation = [
       { href: "/", label: "Command Center", icon: CircleGauge },
       { href: "/intelligence", label: "行业动态", icon: Newspaper },
       { href: "/metrics", label: "财务指标", icon: BarChart3 },
-      { href: "/facts", label: "研究知识库", icon: Network },
+      { href: "/research", label: "研究知识库", icon: Network },
       { label: "客户信息", icon: UsersRound, availability: "soon" },
       { label: "投资人 Q&A", icon: FileQuestion, availability: "soon" },
     ],
@@ -57,18 +57,18 @@ const navigation = [
   {
     label: "投资分析",
     items: [
-      { href: "/intelligence", label: "公司研究", icon: Building2 },
+      { href: "/company-research", label: "公司研究", icon: Building2 },
       { href: "/metrics", label: "情景分析", icon: BriefcaseBusiness },
-      { href: "/#comparables", label: "可比公司", icon: BarChart3 },
+      { href: "/eac-data", label: "EAC动态数据", icon: BarChart3 },
       { label: "估值模型", icon: BookOpenText, availability: "soon" },
     ],
   },
   {
     label: "资本市场",
     items: [
-      { label: "投资人 CRM", icon: UserRoundSearch, availability: "soon" },
+      { href: "/investor-crm", label: "投资人 CRM", icon: UserRoundSearch },
+      { href: "/roadshows", label: "投资人路演记录", icon: Landmark },
       { label: "Q&A 中心", icon: FileQuestion, availability: "soon" },
-      { label: "路演记录", icon: Landmark, availability: "soon" },
       { label: "DD 问题", icon: ClipboardCheck, availability: "soon" },
     ],
   },
@@ -85,8 +85,13 @@ const navigation = [
 const pathNames: Record<string, string> = {
   "/": "Command Center",
   "/facts": "研究知识库",
+  "/research": "研究知识库",
   "/metrics": "财务指标",
   "/intelligence": "行业动态",
+  "/company-research": "公司研究",
+  "/eac-data": "EAC动态数据",
+  "/investor-crm": "投资人 CRM",
+  "/roadshows": "投资人路演记录",
   "/audit": "权限与审计",
 };
 

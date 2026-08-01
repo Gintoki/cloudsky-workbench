@@ -1,4 +1,51 @@
 export type CoverageMarket = "US" | "CN" | "HK";
+export type EacFocusCategory = "EDGE_CLOUD" | "DEVICE" | "INFRASTRUCTURE";
+
+export const eacFocusCategoryLabels: Record<EacFocusCategory, string> = {
+  EDGE_CLOUD: "边缘云",
+  DEVICE: "端侧设备",
+  INFRASTRUCTURE: "基础设施",
+};
+
+// These are research coverage labels, not a substitute for a company's formal industry classification.
+export const eacFocusCategoryByTicker: Partial<Record<string, EacFocusCategory>> = {
+  NET: "EDGE_CLOUD",
+  AKAM: "EDGE_CLOUD",
+  FSLY: "EDGE_CLOUD",
+  DOCN: "EDGE_CLOUD",
+  NBIS: "EDGE_CLOUD",
+  KC: "EDGE_CLOUD",
+  "600845": "EDGE_CLOUD",
+  "300113": "EDGE_CLOUD",
+  "688316": "EDGE_CLOUD",
+  "600410": "EDGE_CLOUD",
+  "300017": "EDGE_CLOUD",
+  "301316": "EDGE_CLOUD",
+  "920493": "EDGE_CLOUD",
+  AAPL: "DEVICE",
+  TUYA: "DEVICE",
+  "9992": "DEVICE",
+  "1810": "DEVICE",
+  "301345": "DEVICE",
+  "002050": "DEVICE",
+  "300750": "DEVICE",
+  "000333": "DEVICE",
+  "000651": "DEVICE",
+  "000725": "DEVICE",
+  "300136": "DEVICE",
+  NVDA: "INFRASTRUCTURE",
+  CRWV: "INFRASTRUCTURE",
+  SNOW: "INFRASTRUCTURE",
+  PLTR: "INFRASTRUCTURE",
+  CRWD: "INFRASTRUCTURE",
+  DDOG: "INFRASTRUCTURE",
+  MDB: "INFRASTRUCTURE",
+  DT: "INFRASTRUCTURE",
+  CFLT: "INFRASTRUCTURE",
+  "688158": "INFRASTRUCTURE",
+  "688017": "INFRASTRUCTURE",
+  "688041": "INFRASTRUCTURE",
+};
 
 export interface ComparableSecurity {
   ticker: string;
@@ -9,6 +56,8 @@ export interface ComparableSecurity {
 }
 
 export const comparableUniverse: ComparableSecurity[] = [
+  { ticker: "AAPL", name: "Apple", market: "US", currency: "USD", researchNames: ["苹果", "Apple"] },
+  { ticker: "NVDA", name: "NVIDIA", market: "US", currency: "USD", researchNames: ["英伟达", "NVIDIA"] },
   { ticker: "NET", name: "Cloudflare", market: "US", currency: "USD", researchNames: ["Cloudflare"] },
   { ticker: "AKAM", name: "Akamai", market: "US", currency: "USD", researchNames: ["Akamai"] },
   { ticker: "FSLY", name: "Fastly", market: "US", currency: "USD", researchNames: ["Fastly"] },
@@ -34,4 +83,28 @@ export const comparableUniverse: ComparableSecurity[] = [
   { ticker: "0268", name: "\u91d1\u8776\u56fd\u9645", market: "HK", currency: "HKD", researchNames: ["\u91d1\u8776\u56fd\u9645"] },
   { ticker: "KC", name: "\u91d1\u5c71\u4e91", market: "US", currency: "USD", researchNames: ["Kingsoft Cloud", "\u91d1\u5c71\u4e91"] },
   { ticker: "TUYA", name: "\u6d82\u9e26\u667a\u80fd", market: "US", currency: "USD", researchNames: ["Tuya", "\u6d82\u9e26\u667a\u80fd"] },
+  { ticker: "9992", name: "泡泡玛特", market: "HK", currency: "HKD", researchNames: ["泡泡玛特"] },
+  { ticker: "1810", name: "小米集团", market: "HK", currency: "HKD", researchNames: ["小米", "小米集团"] },
+  { ticker: "600809", name: "山西汾酒", market: "CN", currency: "CNY", researchNames: ["山西汾酒"] },
+  { ticker: "PDD", name: "拼多多", market: "US", currency: "USD", researchNames: ["拼多多", "PDD"] },
+  { ticker: "300308", name: "中际旭创", market: "CN", currency: "CNY", researchNames: ["中际旭创"] },
+  { ticker: "605499", name: "东鹏饮料", market: "CN", currency: "CNY", researchNames: ["东鹏饮料"] },
+  { ticker: "603259", name: "药明康德", market: "CN", currency: "CNY", researchNames: ["药明康德"] },
+  { ticker: "1024", name: "快手", market: "HK", currency: "HKD", researchNames: ["快手"] },
+  { ticker: "0700", name: "腾讯控股", market: "HK", currency: "HKD", researchNames: ["腾讯控股", "腾讯"] },
+  { ticker: "301345", name: "涛涛车业", market: "CN", currency: "CNY", researchNames: ["涛涛车业"] },
+  { ticker: "002050", name: "三花智控", market: "CN", currency: "CNY", researchNames: ["三花智控"] },
+  { ticker: "300750", name: "宁德时代", market: "CN", currency: "CNY", researchNames: ["宁德时代"] },
+  { ticker: "688111", name: "金山办公", market: "CN", currency: "CNY", researchNames: ["金山办公"] },
+  { ticker: "600436", name: "片仔癀", market: "CN", currency: "CNY", researchNames: ["片仔癀"] },
+  { ticker: "000333", name: "美的集团", market: "CN", currency: "CNY", researchNames: ["美的集团"] },
+  { ticker: "000651", name: "格力电器", market: "CN", currency: "CNY", researchNames: ["格力电器"] },
+  { ticker: "9988", name: "阿里巴巴", market: "HK", currency: "HKD", researchNames: ["阿里巴巴"] },
+  { ticker: "688017", name: "绿的谐波", market: "CN", currency: "CNY", researchNames: ["绿的谐波"] },
+  { ticker: "688041", name: "海光信息", market: "CN", currency: "CNY", researchNames: ["海光信息"] },
+  { ticker: "601012", name: "隆基绿能", market: "CN", currency: "CNY", researchNames: ["隆基绿能"] },
+  { ticker: "300136", name: "信维通信", market: "CN", currency: "CNY", researchNames: ["信维通信"] },
+  { ticker: "002624", name: "完美世界", market: "CN", currency: "CNY", researchNames: ["完美世界"] },
+  { ticker: "000725", name: "京东方", market: "CN", currency: "CNY", researchNames: ["京东方", "京东方A"] },
+  { ticker: "300454", name: "深信服", market: "CN", currency: "CNY", researchNames: ["深信服"] },
 ];

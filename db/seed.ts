@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { closeDb, getDb } from "./client";
 import {
   auditLogs,
@@ -14,12 +14,23 @@ import {
   metrics,
   organizations,
   permissions,
+  researchIndustryModules,
+  researchItemOrganizations,
+  researchItems,
+  researchItemVersions,
+  researchOrganizations,
+  researchSources,
   rolePermissions,
   roles,
   sources,
   userRoles,
   users,
 } from "./schema";
+import {
+  methodologyFacts,
+  methodologySource,
+} from "../lib/company-research/methodology";
+import { industryModuleDefinitions } from "../lib/company-research/industry-modules";
 import {
   DEMO_ORGANIZATION_ID,
   DEMO_PASSWORD,
@@ -34,6 +45,7 @@ import {
   notionIndustryFetchedAt,
   notionIndustryRadarUrl,
 } from "../lib/intelligence/notion-industry-radar";
+import { researchKnowledgeSeeds } from "../lib/research-knowledge/seed-data";
 
 const roleIds: Record<RoleCode, string> = {
   ADMINISTRATOR: "00000000-0000-4000-8000-000000000201",
@@ -57,10 +69,18 @@ const permissionCodes: PermissionCode[] = [
   "intelligence.read",
   "intelligence.create",
   "intelligence.update",
+  "research.read",
+  "research.create",
+  "research.update",
+  "research.submit",
+  "research.approve",
   "audit.read",
   "users.manage",
   "roles.manage",
   "settings.manage",
+  "investor.read",
+  "investor.create",
+  "investor.update",
 ];
 
 async function seed() {
@@ -109,15 +129,27 @@ async function seed() {
   }
 
   const permissionIdByCode = new Map<PermissionCode, string>();
-  for (const [index, code] of permissionCodes.entries()) {
-    const id = `00000000-0000-4000-8000-${String(300 + index).padStart(12, "0")}`;
+  for (const code of permissionCodes) {
     const [resource, action = "*"] =
       code === "*" ? ["*", "*"] : code.split(".");
-    await db
+    const [existingPermission] = await db
+      .select({ id: permissions.id })
+      .from(permissions)
+      .where(eq(permissions.code, code))
+      .limit(1);
+    if (existingPermission) {
+      await db
+        .update(permissions)
+        .set({ resource, action, description: code, updatedAt: new Date() })
+        .where(eq(permissions.id, existingPermission.id));
+      permissionIdByCode.set(code, existingPermission.id);
+      continue;
+    }
+    const [permission] = await db
       .insert(permissions)
-      .values({ id, code, resource, action, description: code })
-      .onConflictDoNothing();
-    permissionIdByCode.set(code, id);
+      .values({ id: crypto.randomUUID(), code, resource, action, description: code })
+      .returning({ id: permissions.id });
+    permissionIdByCode.set(code, permission.id);
   }
 
   for (const user of demoUsers) {
@@ -143,6 +175,27 @@ async function seed() {
     }
   }
 
+  for (const definition of industryModuleDefinitions) {
+    await db
+      .insert(researchIndustryModules)
+      .values({
+        code: definition.code,
+        name: definition.name,
+        description: definition.description,
+        definitionJson: { metrics: definition.metrics },
+      })
+      .onConflictDoUpdate({
+        target: researchIndustryModules.code,
+        set: {
+          name: definition.name,
+          description: definition.description,
+          definitionJson: { metrics: definition.metrics },
+          isActive: true,
+          updatedAt: new Date(),
+        },
+      });
+  }
+
   const sourceId = "30000000-0000-4000-8000-000000000001";
   await db
     .insert(sources)
@@ -154,6 +207,62 @@ async function seed() {
       publisher: "CloudSky Workbench",
     })
     .onConflictDoNothing();
+
+  const methodologySourceId = "30000000-0000-4000-8000-000000000002";
+  await db
+    .insert(sources)
+    .values({
+      id: methodologySourceId,
+      organizationId: DEMO_ORGANIZATION_ID,
+      sourceType: methodologySource.sourceType,
+      title: methodologySource.title,
+      publisher: methodologySource.publisher,
+      accessedAt: new Date(),
+    })
+    .onConflictDoNothing();
+  for (const [index, methodologyFact] of methodologyFacts.entries()) {
+    const id = `11000000-0000-4000-8000-${String(index + 1).padStart(12, "0")}`;
+    await db
+      .insert(companyFacts)
+      .values({
+        id,
+        organizationId: DEMO_ORGANIZATION_ID,
+        primaryCategory: "公司研究方法论",
+        secondaryCategory: methodologyFact.secondaryCategory,
+        title: methodologyFact.title,
+        content: methodologyFact.content,
+        measurementBasis: "根据用户提供的《投资方法框架》提炼的通用研究原则，不包含案例公司数据。",
+        ownerUserId: demoUsers[1].id,
+        status: "APPROVED",
+        reviewerUserId: demoUsers[1].id,
+        reviewedAt: new Date(),
+        effectiveDate: new Date(),
+        currentVersionNo: 1,
+        createdBy: demoUsers[1].id,
+        updatedBy: demoUsers[1].id,
+      })
+      .onConflictDoNothing();
+    await db
+      .insert(factSources)
+      .values({
+        factId: id,
+        sourceId: methodologySourceId,
+        sourceQuote: methodologySource.locator,
+        isPrimary: true,
+      })
+      .onConflictDoNothing();
+    await db
+      .insert(factVersions)
+      .values({
+        factId: id,
+        versionNo: 1,
+        snapshotJson: methodologyFact,
+        changeSummary: "导入公司研究方法论",
+        status: "APPROVED",
+        createdBy: demoUsers[1].id,
+      })
+      .onConflictDoNothing();
+  }
 
   const factId = "10000000-0000-4000-8000-000000000001";
   await db
@@ -236,6 +345,78 @@ async function seed() {
       updatedBy: demoUsers[1].id,
     })
     .onConflictDoNothing();
+
+  for (const seedItem of researchKnowledgeSeeds) {
+    await db
+      .insert(researchOrganizations)
+      .values({
+        id: seedItem.organizationId,
+        organizationId: DEMO_ORGANIZATION_ID,
+        name: seedItem.organizations[0].name,
+        organizationType: "COMPANY",
+      })
+      .onConflictDoNothing();
+    await db
+      .insert(researchItems)
+      .values({
+        id: seedItem.id,
+        organizationId: DEMO_ORGANIZATION_ID,
+        dimension: seedItem.dimension,
+        subtype: seedItem.subtype,
+        title: seedItem.title,
+        summary: seedItem.summary,
+        whatHappened: seedItem.whatHappened,
+        whyItMatters: seedItem.whyItMatters,
+        cloudskyImplication: seedItem.cloudskyImplication,
+        recommendedAction: seedItem.recommendedAction,
+        eventDate: seedItem.eventDate,
+        importance: seedItem.importance,
+        confidence: seedItem.confidence,
+        status: seedItem.status,
+        ownerUserId: demoUsers[1].id,
+        nextAction: seedItem.nextAction,
+        details: seedItem.details,
+        createdBy: demoUsers[1].id,
+        reviewedBy: demoUsers[1].id,
+        reviewedAt: new Date(),
+      })
+      .onConflictDoUpdate({
+        target: researchItems.id,
+        set: {
+          nextFollowUpDate: sql`coalesce(${researchItems.nextFollowUpDate}, excluded.next_follow_up_date)`,
+        },
+      });
+    await db
+      .insert(researchSources)
+      .values({
+        id: seedItem.sourceId,
+        researchItemId: seedItem.id,
+        sourceType: seedItem.sources[0].sourceType,
+        title: seedItem.sources[0].title,
+        url: seedItem.sources[0].url,
+        publisher: seedItem.sources[0].publisher,
+      })
+      .onConflictDoNothing();
+    await db
+      .insert(researchItemOrganizations)
+      .values({
+        researchItemId: seedItem.id,
+        researchOrganizationId: seedItem.organizationId,
+        relationship: seedItem.organizations[0].relationship,
+      })
+      .onConflictDoNothing();
+    await db
+      .insert(researchItemVersions)
+      .values({
+        id: seedItem.versionId,
+        researchItemId: seedItem.id,
+        versionNo: 1,
+        snapshotJson: seedItem,
+        changeSummary: seedItem.changeSummary ?? "初始化公开商业模式案例",
+        createdBy: demoUsers[1].id,
+      })
+      .onConflictDoNothing();
+  }
 
   await db.transaction(async (tx) => {
     const industryBySlug = new Map(

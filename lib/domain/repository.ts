@@ -12,6 +12,11 @@ import {
 } from "@/db/schema";
 import type { AuthUser } from "@/lib/auth/types";
 import {
+  canReadInvestorRecord,
+  investorVisibilityValues,
+  type InvestorVisibility,
+} from "@/lib/investor-relations/visibility";
+import {
   listDemoAudits,
   listDemoFacts,
   listDemoMetrics,
@@ -148,7 +153,34 @@ export async function listAudits(user: AuthUser): Promise<AuditRecord[]> {
     .orderBy(desc(auditLogs.createdAt))
     .limit(100);
 
-  return rows.map((row) => ({
+  return rows
+    .filter((row) => {
+      if (![
+        "INVESTOR_ACCOUNT",
+        "INVESTOR_CONTACT",
+        "ROADSHOW_RECORD",
+      ].includes(row.resourceType)) {
+        return true;
+      }
+      const metadata = row.resourceTitle;
+      if (!metadata || typeof metadata !== "object") return true;
+      const visibility = "visibility" in metadata ? metadata.visibility : null;
+      const ownerUserId = "ownerUserId" in metadata ? metadata.ownerUserId : null;
+      if (
+        typeof visibility !== "string" ||
+        !investorVisibilityValues.includes(visibility as InvestorVisibility) ||
+        typeof ownerUserId !== "string"
+      ) {
+        return true;
+      }
+      return canReadInvestorRecord({
+        role: user.role,
+        userId: user.id,
+        ownerUserId,
+        visibility: visibility as InvestorVisibility,
+      });
+    })
+    .map((row) => ({
     id: row.id,
     actorName: row.actorName ?? "系统",
     action: row.action,

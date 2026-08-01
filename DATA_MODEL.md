@@ -142,6 +142,10 @@ erDiagram
 
 首期将供应商行项目标准化后保存，并保留原始字段映射。
 
+### research_annual_reports
+
+`research_annual_reports` 关联公司研究档案、财政年度、公开披露链接和来源。系统只保存链接及可追溯来源，不在主业务数据库复制大体积 PDF 文件；页面在财务质量表格下提供按年度访问入口。
+
 ## 7. 估值
 
 ### valuation_models
@@ -241,3 +245,48 @@ erDiagram
 - 来源：checksum、URL；
 - 文档 chunk：document + chunk_index；
 - 软删除高频查询使用部分索引 `WHERE deleted_at IS NULL`。
+
+## 13. 公司研究
+
+`research_reports` 以 `(organization_id, company_id)` 唯一约束保存当前公司研究档案，包含结论、核心矛盾、置信度、可预测性、估值状态、完整度、负责人、审核状态和当前版本。它不复制公司主数据、证券、报表、估值模型或行业动态。
+
+结构化子表：
+
+- `research_sections`：可编辑章节及 Fact / Estimate / Inference / Opinion / Unknown 分类；
+- `research_assumptions`：支持/反对证据、验证指标、失效条件、负责人、置信度和下次检查日；
+- `research_moats`：竞争优势强度、趋势、证据、反证和失效条件；
+- `research_metrics`：公司研究指标、期间、Actual/Budget/Forecast、正常化与异常解释，可回链报表和来源；
+- `research_annual_reports`：每个财政年度的公开年报或财务披露链接；
+- `research_valuations`：估值方法、情景、价格日期、价值区间、敏感性和既有估值模型引用；
+- `research_observations`：催化剂、风险、反方观点和监控项；
+- `research_claims` / `research_claim_sources`：重要陈述的分类、数据期间、核验人与多来源引文；
+- `research_versions` / `research_reviews`：不可变快照与提交、审核、退回记录；
+- `research_industry_modules`：可配置行业模块和指标定义 JSON。
+
+行业动态继续保留在 `intelligence_items`，通过 `intelligence_item_companies` 在公司研究页读取，不复制事件。迁移仅将旧 `companies.internal_conclusion`、`watch_rationale`、`risk_factors` 映射到草稿章节并标记 `needs_manual_cleanup`；冲突不覆盖人工研究。
+
+## 14. 研究知识库
+
+`research_items` 是面向研究判断和行动的主表，按 `MARKET`、`TECHNOLOGY`、`BUSINESS_MODEL` 三个维度保存标题、摘要、发生事项、重要性、CloudSky 影响、建议行动、事件日期、重要程度、置信度、状态、负责人和下次跟进日期。`details` 保存各模块的可扩展字段，不替代核心字段。
+
+- `research_sources`：每条研究的原始来源、发布方、链接或文件路径、日期、页码与原文摘录；
+- `research_organizations`：研究对象使用的外部机构目录，不复用租户 `organizations`；
+- `research_item_organizations`：研究条目与外部机构的多对多关联；
+- `research_item_versions`：每次新增、编辑后的不可变快照与变更说明。
+
+研究条目与既有 `company_facts`、`research_reports`、`intelligence_items` 并存：前者仍服务事实口径，`research_reports` 服务单公司研究，`intelligence_items` 服务行业动态。新表不迁移或覆盖任何已有内容。
+
+## 15. 投资人 CRM 与路演
+
+- `investor_accounts`：投资机构主体、类型、关系阶段、投资偏好、地域、负责人、下一步行动、最近互动时间和可见范围；
+- `investor_contacts`：机构联系人、职位和联系信息；
+- `roadshow_records`：关联机构的会议时间、形式、音频链接、文字纪要、关键结论、跟进事项和可见范围；
+- `roadshow_transcript_segments`：每次路演的时间轴文字片段。
+
+可见范围为 `PRIVATE | TEAM | MANAGEMENT`：
+
+- `PRIVATE`：仅记录负责人可见，管理员和总监不自动获得访问权；
+- `TEAM`：组织内具备 `investor.read` 权限的成员可见；
+- `MANAGEMENT`：记录负责人以及管理员、总监可见。
+
+联系人继承所属投资人机构的范围。路演记录可以选择更严格的范围，但不能比所属机构更宽，以防通过路演标题、音频或纪要绕过机构本身的访问限制。路演记录保存时会更新对应机构的最近互动时间；所有新增记录均写入 `audit_logs`。

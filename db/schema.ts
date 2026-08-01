@@ -62,6 +62,99 @@ export const frequencyEnum = pgEnum("frequency", [
   "ANNUAL",
 ]);
 
+export const researchConclusionEnum = pgEnum("research_conclusion", [
+  "POSITIVE_RESEARCH",
+  "WATCH",
+  "CAUTIOUS",
+  "AVOID",
+  "INSUFFICIENT_INFORMATION",
+]);
+
+export const researchClaimKindEnum = pgEnum("research_claim_kind", [
+  "FACT",
+  "ESTIMATE",
+  "INFERENCE",
+  "OPINION",
+  "UNKNOWN",
+]);
+
+export const researchTrendEnum = pgEnum("research_trend", [
+  "WIDENING",
+  "STABLE",
+  "NARROWING",
+  "UNCERTAIN",
+]);
+
+export const researchObservationTypeEnum = pgEnum(
+  "research_observation_type",
+  ["CATALYST", "RISK", "BEAR_CASE", "WATCH_ITEM"],
+);
+
+export const researchDimensionEnum = pgEnum("research_dimension", [
+  "MARKET",
+  "TECHNOLOGY",
+  "BUSINESS_MODEL",
+]);
+
+export const researchImportanceEnum = pgEnum("research_importance", [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+  "CRITICAL",
+]);
+
+export const researchConfidenceEnum = pgEnum("research_confidence", [
+  "LOW",
+  "MEDIUM",
+  "HIGH",
+]);
+
+export const researchItemStatusEnum = pgEnum("research_item_status", [
+  "INBOX",
+  "REVIEWED",
+  "TRACKING",
+  "ACTION_REQUIRED",
+  "ARCHIVED",
+]);
+
+export const researchOrganizationTypeEnum = pgEnum("research_organization_type", [
+  "COMPANY",
+  "UNIVERSITY",
+  "LAB",
+  "INVESTOR",
+  "CUSTOMER",
+  "GOVERNMENT",
+  "OTHER",
+]);
+
+export const investorVisibilityEnum = pgEnum("investor_visibility", [
+  "PRIVATE",
+  "TEAM",
+  "MANAGEMENT",
+]);
+
+export const investorTypeEnum = pgEnum("investor_type", [
+  "INSTITUTION",
+  "FUND",
+  "STRATEGIC",
+  "FAMILY_OFFICE",
+  "INDIVIDUAL",
+  "OTHER",
+]);
+
+export const investorRelationshipStageEnum = pgEnum(
+  "investor_relationship_stage",
+  ["TARGET", "ENGAGED", "DILIGENCE", "ACTIVE", "PAUSED", "DECLINED"],
+);
+
+export const roadshowFormatEnum = pgEnum("roadshow_format", [
+  "ONLINE",
+  "IN_PERSON",
+  "PHONE",
+  "CONFERENCE",
+  "OTHER",
+]);
+
 export const organizations = pgTable("organizations", {
   id: uuid("id").defaultRandom().primaryKey(),
   name: text("name").notNull(),
@@ -256,6 +349,149 @@ export const sources = pgTable(
   (table) => [
     index("sources_checksum_idx").on(table.checksum),
     index("sources_url_idx").on(table.url),
+  ],
+);
+
+export const investorAccounts = pgTable(
+  "investor_accounts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    investorType: investorTypeEnum("investor_type")
+      .default("INSTITUTION")
+      .notNull(),
+    relationshipStage: investorRelationshipStageEnum("relationship_stage")
+      .default("TARGET")
+      .notNull(),
+    focus: text("focus"),
+    geography: text("geography"),
+    website: text("website"),
+    notes: text("notes"),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    visibility: investorVisibilityEnum("visibility").default("TEAM").notNull(),
+    nextAction: text("next_action"),
+    nextActionAt: date("next_action_at"),
+    lastInteractionAt: timestamp("last_interaction_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("investor_accounts_org_name_uidx").on(
+      table.organizationId,
+      table.name,
+    ),
+    index("investor_accounts_org_stage_idx").on(
+      table.organizationId,
+      table.relationshipStage,
+    ),
+    index("investor_accounts_next_action_idx").on(
+      table.organizationId,
+      table.nextActionAt,
+    ),
+    index("investor_accounts_visibility_idx").on(
+      table.organizationId,
+      table.visibility,
+      table.ownerUserId,
+    ),
+  ],
+);
+
+export const investorContacts = pgTable(
+  "investor_contacts",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    investorAccountId: uuid("investor_account_id")
+      .notNull()
+      .references(() => investorAccounts.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    title: text("title"),
+    email: text("email"),
+    phone: text("phone"),
+    wechat: text("wechat"),
+    notes: text("notes"),
+    isPrimary: boolean("is_primary").default(false).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("investor_contacts_account_idx").on(table.investorAccountId),
+    index("investor_contacts_org_name_idx").on(
+      table.organizationId,
+      table.name,
+    ),
+  ],
+);
+
+export const roadshowRecords = pgTable(
+  "roadshow_records",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    investorAccountId: uuid("investor_account_id")
+      .notNull()
+      .references(() => investorAccounts.id),
+    investorContactId: uuid("investor_contact_id").references(
+      () => investorContacts.id,
+    ),
+    title: text("title").notNull(),
+    format: roadshowFormatEnum("format").default("ONLINE").notNull(),
+    occurredAt: timestamp("occurred_at", { withTimezone: true }).notNull(),
+    durationSeconds: integer("duration_seconds"),
+    audioUrl: text("audio_url"),
+    transcript: text("transcript"),
+    keyTakeaways: text("key_takeaways"),
+    nextAction: text("next_action"),
+    followUpDueAt: date("follow_up_due_at"),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    visibility: investorVisibilityEnum("visibility").default("TEAM").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("roadshow_records_account_occurred_idx").on(
+      table.investorAccountId,
+      table.occurredAt,
+    ),
+    index("roadshow_records_org_occurred_idx").on(
+      table.organizationId,
+      table.occurredAt,
+    ),
+    index("roadshow_records_visibility_idx").on(
+      table.organizationId,
+      table.visibility,
+      table.ownerUserId,
+    ),
+  ],
+);
+
+export const roadshowTranscriptSegments = pgTable(
+  "roadshow_transcript_segments",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    roadshowRecordId: uuid("roadshow_record_id")
+      .notNull()
+      .references(() => roadshowRecords.id, { onDelete: "cascade" }),
+    startSeconds: integer("start_seconds").notNull(),
+    endSeconds: integer("end_seconds").notNull(),
+    speaker: text("speaker"),
+    content: text("content").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("roadshow_segments_record_order_uidx").on(
+      table.roadshowRecordId,
+      table.sortOrder,
+    ),
+    index("roadshow_segments_record_time_idx").on(
+      table.roadshowRecordId,
+      table.startSeconds,
+    ),
   ],
 );
 
@@ -788,5 +1024,520 @@ export const notifications = pgTable("notifications", {
     .defaultNow()
     .notNull(),
 });
+
+export const researchIndustryModules = pgTable(
+  "research_industry_modules",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    definitionJson: jsonb("definition_json")
+      .$type<{
+        metrics: Array<{
+          code: string;
+          label: string;
+          unit?: string;
+          description?: string;
+        }>;
+      }>()
+      .default(sql`'{"metrics":[]}'::jsonb`)
+      .notNull(),
+    isActive: boolean("is_active").default(true).notNull(),
+    ...timestamps,
+  },
+  (table) => [index("research_industry_modules_active_idx").on(table.isActive)],
+);
+
+export const researchReports = pgTable(
+  "research_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    companyId: uuid("company_id")
+      .notNull()
+      .references(() => companies.id),
+    industryModuleId: uuid("industry_module_id").references(
+      () => researchIndustryModules.id,
+    ),
+    status: contentStatusEnum("status").default("DRAFT").notNull(),
+    currentVersionNo: integer("current_version_no").default(1).notNull(),
+    conclusion: researchConclusionEnum("conclusion")
+      .default("INSUFFICIENT_INFORMATION")
+      .notNull(),
+    conclusionDate: timestamp("conclusion_date", { withTimezone: true }),
+    conclusionSummary: text("conclusion_summary"),
+    coreTension: text("core_tension"),
+    confidence: integer("confidence"),
+    competenceAssessment: text("competence_assessment"),
+    predictability3Year: integer("predictability_3_year"),
+    predictability5Year: integer("predictability_5_year"),
+    predictability10Year: integer("predictability_10_year"),
+    valuationStatus: text("valuation_status").default("PENDING").notNull(),
+    tagsJson: jsonb("tags_json")
+      .$type<string[]>()
+      .default(sql`'[]'::jsonb`)
+      .notNull(),
+    researchCompleteness: integer("research_completeness").default(0).notNull(),
+    lastChangeSummary: text("last_change_summary"),
+    needsManualCleanup: boolean("needs_manual_cleanup")
+      .default(false)
+      .notNull(),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    reviewerUserId: uuid("reviewer_user_id").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("research_reports_org_company_uidx").on(
+      table.organizationId,
+      table.companyId,
+    ),
+    index("research_reports_company_idx").on(table.companyId),
+    index("research_reports_status_idx").on(table.status),
+  ],
+);
+
+export const researchSections = pgTable(
+  "research_sections",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    code: text("code").notNull(),
+    title: text("title").notNull(),
+    content: text("content"),
+    claimKind: researchClaimKindEnum("claim_kind").default("UNKNOWN").notNull(),
+    sourceId: uuid("source_id").references(() => sources.id),
+    dataAsOf: timestamp("data_as_of", { withTimezone: true }),
+    needsManualCleanup: boolean("needs_manual_cleanup")
+      .default(false)
+      .notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("research_sections_report_code_uidx").on(
+      table.reportId,
+      table.code,
+    ),
+    index("research_sections_report_idx").on(table.reportId),
+  ],
+);
+
+export const researchAssumptions = pgTable(
+  "research_assumptions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    title: text("title").notNull(),
+    status: text("status").default("OPEN").notNull(),
+    supportEvidence: text("support_evidence"),
+    counterEvidence: text("counter_evidence"),
+    verificationMetric: text("verification_metric"),
+    invalidationCondition: text("invalidation_condition"),
+    nextReviewAt: date("next_review_at"),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    confidence: integer("confidence"),
+    claimKind: researchClaimKindEnum("claim_kind").default("INFERENCE").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("research_assumptions_report_idx").on(table.reportId),
+    index("research_assumptions_review_idx").on(table.nextReviewAt),
+  ],
+);
+
+export const researchMoats = pgTable(
+  "research_moats",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    moatType: text("moat_type").notNull(),
+    strength: integer("strength"),
+    trend: researchTrendEnum("trend").default("UNCERTAIN").notNull(),
+    evidence: text("evidence"),
+    counterEvidence: text("counter_evidence"),
+    sustainability: text("sustainability"),
+    failureCondition: text("failure_condition"),
+    claimKind: researchClaimKindEnum("claim_kind").default("INFERENCE").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [index("research_moats_report_idx").on(table.reportId)],
+);
+
+export const researchMetrics = pgTable(
+  "research_metrics",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    financialStatementId: uuid("financial_statement_id").references(
+      () => financialStatements.id,
+    ),
+    sourceId: uuid("source_id").references(() => sources.id),
+    code: text("code").notNull(),
+    label: text("label").notNull(),
+    category: text("category").notNull(),
+    valueNumeric: numeric("value_numeric", { precision: 24, scale: 6 }),
+    unit: text("unit"),
+    valueType: metricValueTypeEnum("value_type").default("ACTUAL").notNull(),
+    frequency: frequencyEnum("frequency").default("ANNUAL").notNull(),
+    periodStart: date("period_start"),
+    periodEnd: date("period_end"),
+    isNormalized: boolean("is_normalized").default(false).notNull(),
+    anomalyNote: text("anomaly_note"),
+    explanation: text("explanation"),
+    claimKind: researchClaimKindEnum("claim_kind").default("UNKNOWN").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("research_metrics_report_period_idx").on(
+      table.reportId,
+      table.periodEnd,
+    ),
+    index("research_metrics_report_code_idx").on(table.reportId, table.code),
+  ],
+);
+
+export const researchAnnualReports = pgTable(
+  "research_annual_reports",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    fiscalYear: integer("fiscal_year").notNull(),
+    sourceId: uuid("source_id").references(() => sources.id),
+    downloadUrl: text("download_url").notNull(),
+    reportDate: date("report_date"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("research_annual_reports_report_year_uidx").on(
+      table.reportId,
+      table.fiscalYear,
+    ),
+    index("research_annual_reports_report_idx").on(table.reportId),
+  ],
+);
+
+export const researchValuations = pgTable(
+  "research_valuations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    valuationModelId: uuid("valuation_model_id").references(
+      () => valuationModels.id,
+    ),
+    sourceId: uuid("source_id").references(() => sources.id),
+    method: text("method").notNull(),
+    scenario: scenarioEnum("scenario").default("BASE").notNull(),
+    status: text("status").default("PENDING").notNull(),
+    currency: text("currency"),
+    priceNumeric: numeric("price_numeric", { precision: 24, scale: 6 }),
+    priceAsOf: date("price_as_of"),
+    marketCapNumeric: numeric("market_cap_numeric", { precision: 30, scale: 2 }),
+    intrinsicValueLow: numeric("intrinsic_value_low", {
+      precision: 30,
+      scale: 2,
+    }),
+    intrinsicValueHigh: numeric("intrinsic_value_high", {
+      precision: 30,
+      scale: 2,
+    }),
+    inputsJson: jsonb("inputs_json").default(sql`'{}'::jsonb`).notNull(),
+    impliedMarketExpectation: text("implied_market_expectation"),
+    sensitivityNote: text("sensitivity_note"),
+    claimKind: researchClaimKindEnum("claim_kind").default("UNKNOWN").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [index("research_valuations_report_idx").on(table.reportId)],
+);
+
+export const researchObservations = pgTable(
+  "research_observations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    sourceId: uuid("source_id").references(() => sources.id),
+    observationType: researchObservationTypeEnum("observation_type").notNull(),
+    title: text("title").notNull(),
+    content: text("content"),
+    status: text("status").default("OPEN").notNull(),
+    probability: integer("probability"),
+    impact: text("impact"),
+    timeWindow: text("time_window"),
+    monitorMetric: text("monitor_metric"),
+    triggerCondition: text("trigger_condition"),
+    claimKind: researchClaimKindEnum("claim_kind").default("INFERENCE").notNull(),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("research_observations_report_type_idx").on(
+      table.reportId,
+      table.observationType,
+    ),
+  ],
+);
+
+export const researchClaims = pgTable(
+  "research_claims",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    sectionId: uuid("section_id").references(() => researchSections.id),
+    title: text("title").notNull(),
+    content: text("content").notNull(),
+    claimKind: researchClaimKindEnum("claim_kind").notNull(),
+    isVerified: boolean("is_verified").default(false).notNull(),
+    verifiedBy: uuid("verified_by").references(() => users.id),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    dataPeriod: text("data_period"),
+    dataAsOf: timestamp("data_as_of", { withTimezone: true }),
+    sortOrder: integer("sort_order").default(0).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("research_claims_report_idx").on(table.reportId),
+    index("research_claims_section_idx").on(table.sectionId),
+  ],
+);
+
+export const researchClaimSources = pgTable(
+  "research_claim_sources",
+  {
+    claimId: uuid("claim_id")
+      .notNull()
+      .references(() => researchClaims.id),
+    sourceId: uuid("source_id")
+      .notNull()
+      .references(() => sources.id),
+    sourceDate: timestamp("source_date", { withTimezone: true }),
+    dataPeriod: text("data_period"),
+    capturedAt: timestamp("captured_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+    sourceQuote: text("source_quote"),
+    isVerified: boolean("is_verified").default(false).notNull(),
+    verifiedBy: uuid("verified_by").references(() => users.id),
+  },
+  (table) => [
+    primaryKey({ columns: [table.claimId, table.sourceId] }),
+    index("research_claim_sources_source_idx").on(table.sourceId),
+  ],
+);
+
+export const researchVersions = pgTable(
+  "research_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    versionNo: integer("version_no").notNull(),
+    snapshotJson: jsonb("snapshot_json").notNull(),
+    changeSummary: text("change_summary").notNull(),
+    status: contentStatusEnum("status").notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("research_versions_report_no_uidx").on(
+      table.reportId,
+      table.versionNo,
+    ),
+    index("research_versions_report_created_idx").on(
+      table.reportId,
+      table.createdAt,
+    ),
+  ],
+);
+
+export const researchReviews = pgTable(
+  "research_reviews",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    reportId: uuid("report_id")
+      .notNull()
+      .references(() => researchReports.id),
+    versionId: uuid("version_id").references(() => researchVersions.id),
+    action: text("action").notNull(),
+    comment: text("comment"),
+    actorUserId: uuid("actor_user_id")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("research_reviews_report_idx").on(table.reportId)],
+);
+
+export const researchOrganizations = pgTable(
+  "research_organizations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    name: text("name").notNull(),
+    organizationType: researchOrganizationTypeEnum("organization_type")
+      .default("OTHER")
+      .notNull(),
+    country: text("country"),
+    website: text("website"),
+    description: text("description"),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("research_organizations_org_name_uidx").on(
+      table.organizationId,
+      table.name,
+    ),
+    index("research_organizations_type_idx").on(
+      table.organizationId,
+      table.organizationType,
+    ),
+  ],
+);
+
+export const researchItems = pgTable(
+  "research_items",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    dimension: researchDimensionEnum("dimension").notNull(),
+    subtype: text("subtype").notNull(),
+    title: text("title").notNull(),
+    summary: text("summary").notNull(),
+    whatHappened: text("what_happened").notNull(),
+    whyItMatters: text("why_it_matters").notNull(),
+    cloudskyImplication: text("cloudsky_implication").notNull(),
+    recommendedAction: text("recommended_action").notNull(),
+    eventDate: date("event_date").notNull(),
+    importance: researchImportanceEnum("importance").default("MEDIUM").notNull(),
+    confidence: researchConfidenceEnum("confidence").default("MEDIUM").notNull(),
+    status: researchItemStatusEnum("status").default("INBOX").notNull(),
+    ownerUserId: uuid("owner_user_id").references(() => users.id),
+    nextAction: text("next_action"),
+    nextFollowUpDate: date("next_follow_up_date"),
+    details: jsonb("details").default(sql`'{}'::jsonb`).notNull(),
+    embedding: vector1536("embedding"),
+    createdBy: uuid("created_by").notNull().references(() => users.id),
+    reviewedBy: uuid("reviewed_by").references(() => users.id),
+    reviewedAt: timestamp("reviewed_at", { withTimezone: true }),
+    currentVersionNo: integer("current_version_no").default(1).notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("research_items_org_dimension_event_idx").on(
+      table.organizationId,
+      table.dimension,
+      table.eventDate,
+    ),
+    index("research_items_org_status_follow_up_idx").on(
+      table.organizationId,
+      table.status,
+      table.nextFollowUpDate,
+    ),
+    index("research_items_org_importance_idx").on(
+      table.organizationId,
+      table.importance,
+    ),
+  ],
+);
+
+export const researchSources = pgTable(
+  "research_sources",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    researchItemId: uuid("research_item_id")
+      .notNull()
+      .references(() => researchItems.id, { onDelete: "cascade" }),
+    sourceType: text("source_type").notNull(),
+    title: text("title").notNull(),
+    url: text("url"),
+    filePath: text("file_path"),
+    publisher: text("publisher"),
+    publishedAt: timestamp("published_at", { withTimezone: true }),
+    pageNumber: integer("page_number"),
+    quotedText: text("quoted_text"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("research_sources_item_idx").on(table.researchItemId)],
+);
+
+export const researchItemOrganizations = pgTable(
+  "research_item_organizations",
+  {
+    researchItemId: uuid("research_item_id")
+      .notNull()
+      .references(() => researchItems.id, { onDelete: "cascade" }),
+    researchOrganizationId: uuid("research_organization_id")
+      .notNull()
+      .references(() => researchOrganizations.id),
+    relationship: text("relationship"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.researchItemId, table.researchOrganizationId] }),
+    index("research_item_organizations_org_idx").on(table.researchOrganizationId),
+  ],
+);
+
+export const researchItemVersions = pgTable(
+  "research_item_versions",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    researchItemId: uuid("research_item_id")
+      .notNull()
+      .references(() => researchItems.id, { onDelete: "cascade" }),
+    versionNo: integer("version_no").notNull(),
+    snapshotJson: jsonb("snapshot_json").notNull(),
+    changeSummary: text("change_summary").notNull(),
+    createdBy: uuid("created_by").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("research_item_versions_item_no_uidx").on(
+      table.researchItemId,
+      table.versionNo,
+    ),
+    index("research_item_versions_item_created_idx").on(
+      table.researchItemId,
+      table.createdAt,
+    ),
+  ],
+);
 
 export const softDeletePredicate = sql`deleted_at is null`;

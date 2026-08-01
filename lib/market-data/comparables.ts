@@ -5,6 +5,7 @@ import type {
 } from "@/lib/domain/types";
 
 const TENCENT_QUOTE_URL = "https://qt.gtimg.cn/q=";
+const TENCENT_KLINE_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get";
 const EASTMONEY_DATA_URL = "https://datacenter-web.eastmoney.com/api/data/v1/get";
 const EASTMONEY_SEARCH_URL = "https://searchapi.eastmoney.com/api/suggest/get";
 const EASTMONEY_SEARCH_TOKEN = "D43BF722C8E33BDC906FB84D85E326E8";
@@ -19,6 +20,15 @@ type TencentQuote = {
   price: number | null;
   previousClose: number | null;
   marketCap: number | null;
+};
+
+type DailyPricePoint = {
+  date: string;
+  close: number;
+};
+
+type TencentKlineResponse = {
+  data?: Record<string, { qfqday?: unknown[][]; day?: unknown[][] }>;
 };
 
 type EastmoneyRecord = Record<string, unknown>;
@@ -104,7 +114,9 @@ function priorBusinessDay() {
 function tencentSymbol(security: ComparableSecurity) {
   if (security.market === "US") return `us${security.ticker}`;
   if (security.market === "HK") return `hk${security.ticker.padStart(5, "0")}`;
-  if (security.ticker.startsWith("3")) return `sz${security.ticker}`;
+  if (security.ticker.startsWith("0") || security.ticker.startsWith("3")) {
+    return `sz${security.ticker}`;
+  }
   if (security.ticker.startsWith("9")) return `bj${security.ticker}`;
   return `sh${security.ticker}`;
 }
@@ -135,6 +147,72 @@ export function parseTencentQuotes(payload: string) {
   return quotes;
 }
 
+export function parseTencentKlineHistory(payload: unknown, symbol: string): DailyPricePoint[] {
+  const response = payload as TencentKlineResponse;
+  const data = response.data?.[symbol];
+  const rows = data?.qfqday?.length ? data.qfqday : data?.day ?? [];
+  return rows
+    .map((row) => ({ date: readString(row[0]), close: readNumber(row[2]) }))
+    .filter((row): row is { date: string; close: number } => row.date !== null && row.close !== null)
+    .sort((left, right) => left.date.localeCompare(right.date));
+}
+
+function percentChange(current: number, baseline: number | undefined) {
+  if (!baseline || baseline === 0) return null;
+  return ((current - baseline) / baseline) * 100;
+}
+
+function lastOnOrBefore(points: DailyPricePoint[], date: string) {
+  for (let index = points.length - 1; index >= 0; index -= 1) {
+    if (points[index].date <= date) return points[index];
+  }
+  return undefined;
+}
+
+function calendarDayGap(earlier: string | undefined, later: string) {
+  if (!earlier) return Number.POSITIVE_INFINITY;
+  const earlierTime = Date.parse(`${earlier}T00:00:00Z`);
+  const laterTime = Date.parse(`${later}T00:00:00Z`);
+  if (Number.isNaN(earlierTime) || Number.isNaN(laterTime)) return Number.POSITIVE_INFINITY;
+  return Math.round((laterTime - earlierTime) / 86_400_000);
+}
+
+export function calculateTencentPricePerformance(history: DailyPricePoint[]) {
+  const points = [...history].sort((left, right) => left.date.localeCompare(right.date));
+  const latest = points.at(-1);
+  if (!latest) {
+    return {
+      price: null,
+      priceAsOf: null,
+      priceChangePercent: null,
+      thirtyDayChangePercent: null,
+      yearToDateChangePercent: null,
+    };
+  }
+  const thirtyDaysEarlier = new Date(`${latest.date}T00:00:00Z`);
+  thirtyDaysEarlier.setUTCDate(thirtyDaysEarlier.getUTCDate() - 30);
+  const thirtyDayBaseline = lastOnOrBefore(
+    points,
+    thirtyDaysEarlier.toISOString().slice(0, 10),
+  );
+  const yearBaseline = lastOnOrBefore(points, `${latest.date.slice(0, 4)}-01-01`);
+  const previous = points.at(-2);
+  const hasRecentPreviousClose = calendarDayGap(previous?.date, latest.date) <= 10;
+  const hasThirtyDayBaseline = calendarDayGap(thirtyDayBaseline?.date, thirtyDaysEarlier.toISOString().slice(0, 10)) <= 10;
+  const firstDayOfYear = `${latest.date.slice(0, 4)}-01-01`;
+  return {
+    price: latest.close,
+    priceAsOf: latest.date,
+    priceChangePercent: hasRecentPreviousClose ? percentChange(latest.close, previous?.close) : null,
+    thirtyDayChangePercent: hasThirtyDayBaseline ? percentChange(latest.close, thirtyDayBaseline?.close) : null,
+    yearToDateChangePercent: yearBaseline &&
+      yearBaseline.date >= `${Number(latest.date.slice(0, 4)) - 1}-12-15` &&
+      yearBaseline.date < firstDayOfYear
+      ? percentChange(latest.close, yearBaseline.close)
+      : null,
+  };
+}
+
 async function fetchTencentQuotes() {
   const symbols = comparableUniverse.map(tencentSymbol).join(",");
   const response = await fetch(`${TENCENT_QUOTE_URL}${symbols}`, {
@@ -144,6 +222,17 @@ async function fetchTencentQuotes() {
     throw new Error(`Tencent Finance request failed with status ${response.status}`);
   }
   return parseTencentQuotes(await response.text());
+}
+
+async function fetchTencentKlineHistory(security: ComparableSecurity) {
+  const symbol = tencentSymbol(security);
+  const url = new URL(TENCENT_KLINE_URL);
+  url.searchParams.set("param", `${symbol},day,,,400,qfq`);
+  const response = await fetch(url, { cache: "no-store" });
+  if (!response.ok) {
+    throw new Error(`Tencent Finance kline request failed with status ${response.status}`);
+  }
+  return parseTencentKlineHistory(await response.json(), symbol);
 }
 
 function eastmoneyDataUrl(reportName: string, filter: string) {
@@ -284,6 +373,8 @@ function makeEmptyItems(): ComparableMarketRecord[] {
     financialCurrency: security.currency,
     price: null,
     priceChangePercent: null,
+    thirtyDayChangePercent: null,
+    yearToDateChangePercent: null,
     marketCap: null,
     revenue: null,
     grossMargin: null,
@@ -320,6 +411,16 @@ async function loadComparableMarketData(): Promise<ComparableMarketDataResult> {
   const financialByTicker = new Map(
     comparableUniverse.map((security, index) => [security.ticker, financials[index]]),
   );
+  const histories = await mapWithConcurrency(comparableUniverse, 6, async (security) => {
+    try {
+      return await fetchTencentKlineHistory(security);
+    } catch {
+      return [];
+    }
+  });
+  const historyByTicker = new Map(
+    comparableUniverse.map((security, index) => [security.ticker, histories[index]]),
+  );
 
   let quotes = new Map<string, TencentQuote>();
   let quoteSourceAvailable = true;
@@ -329,11 +430,11 @@ async function loadComparableMarketData(): Promise<ComparableMarketDataResult> {
     quoteSourceAvailable = false;
   }
 
-  const priceAsOf = priorBusinessDay();
   const items = comparableUniverse.map((security) => {
     const quote = quotes.get(tencentSymbol(security));
     const financial = financialByTicker.get(security.ticker);
-    const price = quote?.previousClose ?? null;
+    const performance = calculateTencentPricePerformance(historyByTicker.get(security.ticker) ?? []);
+    const price = performance.price ?? quote?.previousClose ?? null;
     const marketCap = quote?.marketCap ?? null;
     const hasAnyData = [
       price,
@@ -349,12 +450,14 @@ async function loadComparableMarketData(): Promise<ComparableMarketDataResult> {
       currency: security.currency,
       financialCurrency: financial?.financialCurrency ?? security.currency,
       price,
-      priceChangePercent: null,
+      priceChangePercent: performance.priceChangePercent,
+      thirtyDayChangePercent: performance.thirtyDayChangePercent,
+      yearToDateChangePercent: performance.yearToDateChangePercent,
       marketCap,
       revenue: financial?.revenue ?? null,
       grossMargin: financial?.grossMargin ?? null,
       netMargin: financial?.netMargin ?? null,
-      priceAsOf: price === null ? null : priceAsOf,
+      priceAsOf: performance.priceAsOf ?? (price === null ? null : priorBusinessDay()),
       financialPeriod: financial?.financialPeriod ?? null,
       financialAsOf: financial?.financialAsOf ?? null,
       dataStatus: hasAnyData ? "AVAILABLE" : "UNAVAILABLE",

@@ -1,0 +1,1 @@
+ALTER TABLE "research_reports" ADD COLUMN "tags_json" jsonb DEFAULT '[]'::jsonb NOT NULL;

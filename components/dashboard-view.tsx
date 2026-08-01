@@ -17,12 +17,19 @@ import { useApiData } from "@/lib/client/use-api-data";
 import type {
   AuditRecord,
   ComparableMarketDataResult,
-  ComparableMarketRecord,
   FactRecord,
   IntelligenceListResult,
   MetricRecord,
 } from "@/lib/domain/types";
+import { investorStageLabels, type InvestorCrmData } from "@/lib/investor-relations/types";
 import { comparableUniverse } from "@/lib/market-data/coverage-universe";
+import {
+  formatComparableDate,
+  formatComparablePrice,
+  formatComparableScale,
+  getPriceSales,
+  marketLabel,
+} from "@/lib/market-data/formatters";
 import {
   DataTable,
   EmptyState,
@@ -37,13 +44,6 @@ type ComparableSort = "MARKET_CAP" | "CHANGE" | "PS";
 type MarketFilter = "ALL" | "US" | "CN" | "HK";
 type MetricMode = MetricRecord["valueType"];
 
-function formatDate(value: string) {
-  return new Intl.DateTimeFormat("zh-CN", {
-    dateStyle: "medium",
-    timeZone: "Asia/Shanghai",
-  }).format(new Date(`${value}T00:00:00+08:00`));
-}
-
 function formatTimestamp(value: string | null | undefined) {
   if (!value) return "暂无数据";
   const date = new Date(value);
@@ -53,31 +53,6 @@ function formatTimestamp(value: string | null | undefined) {
     timeStyle: "short",
     timeZone: "Asia/Shanghai",
   }).format(date);
-}
-
-function formatPrice(
-  value: number | null,
-  currency: ComparableMarketRecord["currency"],
-) {
-  if (value === null) return "--";
-  const prefix = currency === "USD" ? "$" : currency === "HKD" ? "HK$" : "CNY ";
-  return `${prefix}${value.toLocaleString("en-US", {
-    maximumFractionDigits: 2,
-    minimumFractionDigits: 2,
-  })}`;
-}
-
-function formatScale(
-  value: number | null,
-  currency: ComparableMarketRecord["currency"],
-) {
-  if (value === null) return "--";
-  const absolute = Math.abs(value);
-  const divisor = absolute >= 1_000_000_000 ? 1_000_000_000 : 1_000_000;
-  const suffix = divisor === 1_000_000_000 ? "B" : "M";
-  return `${currency} ${(value / divisor).toLocaleString("en-US", {
-    maximumFractionDigits: 1,
-  })}${suffix}`;
 }
 
 function formatMetric(metric: MetricRecord) {
@@ -98,18 +73,6 @@ function formatRelative(value: string) {
   if (minutes < 60) return `${minutes} 分钟前`;
   if (minutes < 1_440) return `${Math.round(minutes / 60)} 小时前`;
   return `${Math.round(minutes / 1_440)} 天前`;
-}
-
-function getPriceSales(record: ComparableMarketRecord) {
-  if (
-    record.marketCap === null ||
-    record.revenue === null ||
-    record.revenue === 0 ||
-    record.currency !== record.financialCurrency
-  ) {
-    return null;
-  }
-  return record.marketCap / record.revenue;
 }
 
 function DashboardSkeleton() {
@@ -135,7 +98,6 @@ export function DashboardView({ user }: { user: AuthUser }) {
   const [marketFilter, setMarketFilter] = useState<MarketFilter>("ALL");
   const [marketSort, setMarketSort] = useState<ComparableSort>("MARKET_CAP");
   const [marketQuery, setMarketQuery] = useState("");
-  const [showAllComparables, setShowAllComparables] = useState(false);
   const [activeCategory, setActiveCategory] = useState("ALL");
   const [metricMode, setMetricMode] = useState<MetricMode>("ACTUAL");
   const facts = useApiData<FactRecord[]>("/api/facts");
@@ -149,12 +111,16 @@ export function DashboardView({ user }: { user: AuthUser }) {
     }`,
   );
   const canReadAudit = user.role === "ADMINISTRATOR" || user.role === "DIRECTOR";
+  const canReadInvestor = user.role !== "VIEWER";
   const audits = useApiData<AuditRecord[]>(
     canReadAudit ? "/api/audit" : "/api/facts",
   );
+  const investorCrm = useApiData<InvestorCrmData>(
+    canReadInvestor ? "/api/investor-crm" : "/api/facts",
+  );
 
-  const isLoading = facts.loading || metrics.loading || intelligence.loading || audits.loading;
-  const hasError = facts.error || metrics.error || intelligence.error || audits.error;
+  const isLoading = facts.loading || metrics.loading || intelligence.loading || audits.loading || (canReadInvestor && investorCrm.loading);
+  const hasError = facts.error || metrics.error || intelligence.error || audits.error || (canReadInvestor && investorCrm.error);
 
   if (isLoading) return <DashboardSkeleton />;
 
@@ -176,6 +142,7 @@ export function DashboardView({ user }: { user: AuthUser }) {
   const intelligenceRows = intelligence.data?.items ?? [];
   const categories = intelligence.data?.categories ?? [];
   const auditRows = canReadAudit ? ((audits.data ?? []) as AuditRecord[]) : [];
+  const investorAccounts = canReadInvestor ? investorCrm.data?.accounts ?? [] : [];
   const comparableByTicker = new Map(
     (comparableMarketData.data?.items ?? []).map((item) => [item.ticker, item]),
   );
@@ -222,7 +189,7 @@ export function DashboardView({ user }: { user: AuthUser }) {
       if (marketSort === "PS") return (rightPS ?? -Infinity) - (leftPS ?? -Infinity);
       return (right.record?.marketCap ?? -Infinity) - (left.record?.marketCap ?? -Infinity);
     });
-  const shownComparables = showAllComparables ? comparableRows : comparableRows.slice(0, 6);
+  const shownComparables = comparableRows.slice(0, 6);
   const actionItems = [
     ...pendingFacts.map((fact) => ({
       id: fact.id,
@@ -311,16 +278,42 @@ export function DashboardView({ user }: { user: AuthUser }) {
         />
       </section>
 
+      {canReadInvestor && (
+        <SectionCard
+          action={<Link className="os-text-button" href="/investor-crm">查看投资人 CRM <ArrowUpRight size={14} /></Link>}
+          className="os-dashboard-crm"
+          eyebrow="资本市场关系"
+          title="投资人 CRM"
+        >
+          {investorAccounts.length ? (
+            <div className="os-crm-dashboard-content">
+              <dl className="os-crm-dashboard-summary">
+                <div><dt>投资人机构</dt><dd>{investorAccounts.length}</dd></div>
+                <div><dt>活跃跟进</dt><dd>{investorAccounts.filter((account) => account.relationshipStage === "ACTIVE").length}</dd></div>
+                <div><dt>待办行动</dt><dd>{investorAccounts.filter((account) => account.nextAction).length}</dd></div>
+              </dl>
+              <div className="os-crm-dashboard-list">
+                {investorAccounts.slice(0, 4).map((account) => (
+                  <Link className="os-crm-dashboard-row" href="/investor-crm" key={account.id}>
+                    <div>
+                      <strong>{account.name}</strong>
+                      <span>{[investorStageLabels[account.relationshipStage] ?? account.relationshipStage, account.focus].filter(Boolean).join(" · ")}</span>
+                    </div>
+                    <span>{account.nextAction ? `下一步：${account.nextAction}` : "暂无待办"}</span>
+                    <ChevronRight aria-hidden="true" size={16} />
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <EmptyState description="新增机构后，这里会汇总关系阶段、下一步行动和路演记录。" title="暂无投资人机构" />
+          )}
+        </SectionCard>
+      )}
+
       <div className="os-dashboard-grid os-dashboard-grid-primary">
         <SectionCard
-          action={
-            <div className="os-card-controls">
-              <button className="os-text-button" onClick={() => setShowAllComparables((show) => !show)} type="button">
-                {showAllComparables ? "收起" : `查看全部 ${comparableRows.length}`}
-                <ArrowUpRight size={14} />
-              </button>
-            </div>
-          }
+          action={<Link className="os-text-button" href="/eac-data">查看 EAC 动态数据 <ArrowUpRight size={14} /></Link>}
           className="os-market-card"
           eyebrow="PUBLIC MARKET DATA"
           title="可比公司市场表现"
@@ -368,19 +361,19 @@ export function DashboardView({ user }: { user: AuthUser }) {
           {comparableMarketData.error && (
             <div className="os-data-notice is-danger">市场数据暂时不可用，未显示估算值。</div>
           )}
-          <DataTable className={showAllComparables ? "is-expanded" : ""}>
+          <DataTable>
             <div className="os-table-scroll">
               <table>
                 <thead>
                   <tr>
-                    <th>Ticker</th>
-                    <th>Company</th>
-                    <th>Market / Sector</th>
-                    <th>Price</th>
-                    <th>Change</th>
-                    <th>Market Cap</th>
-                    <th>P/S</th>
-                    <th>Updated</th>
+                    <th>代码</th>
+                    <th>公司</th>
+                    <th>市场</th>
+                    <th>收盘价</th>
+                    <th>昨日涨跌</th>
+                    <th>市值</th>
+                    <th>市销率</th>
+                    <th>更新日期</th>
                     <th aria-label="操作" />
                   </tr>
                 </thead>
@@ -392,8 +385,8 @@ export function DashboardView({ user }: { user: AuthUser }) {
                       <tr key={security.ticker}>
                         <td><span className="os-data-mono os-ticker">{security.ticker}</span></td>
                         <td><strong className="os-company-name">{security.name}</strong></td>
-                        <td><span className="os-market-label">{security.market === "CN" ? "A 股" : security.market === "HK" ? "港股" : "美股"}</span></td>
-                        <td><strong className="os-data-mono">{formatPrice(record?.price ?? null, security.currency)}</strong></td>
+                        <td><span className="os-market-label">{marketLabel(security.market)}</span></td>
+                        <td><strong className="os-data-mono">{formatComparablePrice(record?.price ?? null, security.currency)}</strong></td>
                         <td>
                           {change === null ? (
                             <span className="os-muted-data" title="当前日终快照仅提供前收盘价">--</span>
@@ -404,9 +397,9 @@ export function DashboardView({ user }: { user: AuthUser }) {
                             </span>
                           )}
                         </td>
-                        <td><span className="os-data-mono">{formatScale(record?.marketCap ?? null, security.currency)}</span></td>
-                        <td><span className="os-data-mono">{priceSales === null ? "--" : `${priceSales.toFixed(1)}x`}</span></td>
-                        <td><span className="os-data-date">{record?.priceAsOf ? formatDate(record.priceAsOf) : "--"}</span></td>
+                        <td><span className="os-data-mono">{formatComparableScale(record?.marketCap ?? null, security.currency)}</span></td>
+                        <td><span className="os-data-mono">{priceSales === null ? "--" : `${priceSales.toFixed(1)}倍`}</span></td>
+                        <td><span className="os-data-date">{formatComparableDate(record?.priceAsOf)}</span></td>
                         <td><Link aria-label={`查看 ${security.name} 研究`} className="os-row-action" href="/intelligence"><ChevronRight size={16} /></Link></td>
                       </tr>
                     );

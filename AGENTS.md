@@ -1,5 +1,11 @@
 # AGENTS.md
 
+## Company research
+
+- 公司研究任务应调用 `company-research` skill。
+- 研究数据必须保留来源和日期；不得编造缺失数据。
+- 不得直接用过期价格生成“当前估值”，不得把推断写成事实。
+
 本文件适用于整个仓库。
 
 ## Product invariants
