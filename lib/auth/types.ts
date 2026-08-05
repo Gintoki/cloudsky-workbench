@@ -24,6 +24,8 @@ export type PermissionCode =
   | "research.update"
   | "research.submit"
   | "research.approve"
+  | "agent.read"
+  | "agent.writeback"
   | "investor.read"
   | "investor.create"
   | "investor.update"

@@ -29,6 +29,14 @@ services:
           type: web
           name: cloudsky-data-ai-api
           envVarKey: DATA_AI_API_SHARED_SECRET
+      - key: DASHSCOPE_API_KEY
+        sync: false
+      - key: DASHSCOPE_BASE_URL
+        value: https://dashscope.aliyuncs.com/compatible-mode/v1
+      - key: AI_AGENT_MODEL
+        value: qwen3.7-plus
+      - key: AI_AGENT_MAX_REQUESTS_PER_HOUR
+        value: "20"
 
   - type: web
     name: cloudsky-data-ai-api

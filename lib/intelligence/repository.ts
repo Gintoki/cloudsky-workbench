@@ -23,12 +23,8 @@ import {
   notionIndustryFetchedAt,
 } from "./notion-industry-radar";
 
-function shouldUseSeedData(user: AuthUser): boolean {
-  return (
-    process.env.USE_DEMO_DATA === "true" ||
-    !hasDatabase() ||
-    user.email.endsWith("@cloudsky.demo")
-  );
+function shouldUseSeedData(): boolean {
+  return process.env.USE_DEMO_DATA === "true" || !hasDatabase();
 }
 
 function seedRecords(): IntelligenceRecord[] {
@@ -178,7 +174,7 @@ export async function listIntelligence(
   user: AuthUser,
   filters: IntelligenceFilters = {},
 ): Promise<IntelligenceListResult> {
-  const records = shouldUseSeedData(user)
+  const records = shouldUseSeedData()
     ? seedRecords()
     : await databaseRecords(user);
   return filterIntelligence(records, filters);

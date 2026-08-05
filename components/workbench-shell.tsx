@@ -75,7 +75,7 @@ const navigation = [
   {
     label: "智能助手",
     items: [
-      { label: "Research Agent", icon: BrainCircuit, availability: "soon" },
+      { href: "/research-agent", label: "Research Agent", icon: BrainCircuit },
       { label: "DD Agent", icon: Bot, availability: "soon" },
       { label: "Financial Agent", icon: Sparkles, availability: "soon" },
     ],
@@ -86,6 +86,7 @@ const pathNames: Record<string, string> = {
   "/": "Command Center",
   "/facts": "研究知识库",
   "/research": "研究知识库",
+  "/research-agent": "Research Agent",
   "/metrics": "财务指标",
   "/intelligence": "行业动态",
   "/company-research": "公司研究",

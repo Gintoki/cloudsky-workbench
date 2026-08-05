@@ -117,6 +117,11 @@ export const researchItemStatusEnum = pgEnum("research_item_status", [
   "ARCHIVED",
 ]);
 
+export const agentMessageRoleEnum = pgEnum("agent_message_role", [
+  "USER",
+  "ASSISTANT",
+]);
+
 export const researchOrganizationTypeEnum = pgEnum("research_organization_type", [
   "COMPANY",
   "UNIVERSITY",
@@ -1537,6 +1542,75 @@ export const researchItemVersions = pgTable(
       table.researchItemId,
       table.createdAt,
     ),
+  ],
+);
+
+export const agentConversations = pgTable(
+  "agent_conversations",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id),
+    title: text("title").notNull(),
+    ...timestamps,
+  },
+  (table) => [
+    index("agent_conversations_user_updated_idx").on(
+      table.organizationId,
+      table.userId,
+      table.updatedAt,
+    ),
+  ],
+);
+
+export const agentMessages = pgTable(
+  "agent_messages",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => agentConversations.id, { onDelete: "cascade" }),
+    role: agentMessageRoleEnum("role").notNull(),
+    content: text("content").notNull(),
+    citations: jsonb("citations").default(sql`'[]'::jsonb`).notNull(),
+    model: text("model"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [index("agent_messages_conversation_created_idx").on(table.conversationId, table.createdAt)],
+);
+
+export const agentWritebacks = pgTable(
+  "agent_writebacks",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    organizationId: uuid("organization_id")
+      .notNull()
+      .references(() => organizations.id),
+    conversationId: uuid("conversation_id")
+      .notNull()
+      .references(() => agentConversations.id, { onDelete: "cascade" }),
+    messageId: uuid("message_id")
+      .notNull()
+      .references(() => agentMessages.id, { onDelete: "cascade" }),
+    researchItemId: uuid("research_item_id")
+      .notNull()
+      .references(() => researchItems.id, { onDelete: "restrict" }),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .defaultNow()
+      .notNull(),
+  },
+  (table) => [
+    uniqueIndex("agent_writebacks_message_uidx").on(table.messageId),
+    index("agent_writebacks_org_created_idx").on(table.organizationId, table.createdAt),
   ],
 );
 

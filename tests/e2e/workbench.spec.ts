@@ -90,3 +90,24 @@ test("Viewer can filter intelligence and open a sourced detail", async ({
     page.getByRole("link", { name: "PPIO 官方博客", exact: true }),
   ).toBeVisible();
 });
+
+test("Research Agent keeps history personal and restricts database write-back", async ({ page }) => {
+  await login(page, "director@cloudsky.demo");
+  await page.goto("/research-agent");
+  await expect(page.getByText("我的问答", { exact: true })).toBeVisible();
+  const history = await page.request.get("/api/research-agent");
+  expect(history.status()).toBe(200);
+
+  await page.request.post("/api/auth/logout");
+  await login(page, "analyst@cloudsky.demo");
+  const writeback = await page.request.post(
+    "/api/research-agent/00000000-0000-4000-8000-000000000001/writeback",
+    {
+      data: {
+        messageId: "00000000-0000-4000-8000-000000000001",
+        dimension: "MARKET",
+      },
+    },
+  );
+  expect(writeback.status()).toBe(403);
+});

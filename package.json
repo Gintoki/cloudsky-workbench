@@ -23,6 +23,7 @@
     "db:sync-research-market": "node --env-file-if-exists=.env --import tsx scripts/sync-company-research-market-data.ts",
     "db:sync-research-financials": "node --env-file-if-exists=.env --import tsx scripts/sync-company-research-financial-history.ts",
     "db:sync-research-annual-reports": "node --env-file-if-exists=.env --import tsx scripts/sync-company-research-annual-reports.ts",
+    "db:import-notion-industry-radar": "node --env-file-if-exists=.env scripts/import-notion-industry-radar-events.mjs",
     "sync:notion": "node scripts/sync-notion-intelligence.mjs"
   },
   "dependencies": {
